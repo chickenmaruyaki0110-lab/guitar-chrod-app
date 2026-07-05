@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chord Sheet Maker | コード譜メーカー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">♪</span>
+    <div>
+      <h1>Chord Sheet Maker</h1>
+      <p class="brand-sub">ギターコード譜を作って、保存して、弾く。</p>
+    </div>
+  </div>
+
+  <div class="song-title-row">
+    <input id="songTitleInput" class="title-input" type="text" placeholder="曲のタイトルを入力…" maxlength="60" />
+    <button id="newSongBtn" class="btn btn-ghost" title="新しい楽譜を作成">新規</button>
+    <button id="saveSongBtn" class="btn btn-primary" title="この楽譜を保存">保存</button>
+    <button id="openListBtn" class="btn btn-ghost" title="保存した楽譜の一覧を開く">曲一覧</button>
+    <button id="openImportBtn" class="btn btn-ghost" title="歌詞とコードをまとめて貼り付けて自動生成">一括インポート</button>
+  </div>
+</header>
+
+<main class="workspace">
+
+  <!-- 左パネル: コード / 歌詞 の作成 -->
+  <section class="builder-panel" aria-label="コード・歌詞ビルダー">
+
+    <div class="panel-block">
+      <h2 class="panel-title"><span class="panel-num">01</span>ルート音を選ぶ</h2>
+      <div class="root-grid" id="rootGrid"></div>
+    </div>
+
+    <div class="panel-block">
+      <h2 class="panel-title"><span class="panel-num">02</span>コードの種類を選ぶ</h2>
+      <div class="quality-grid" id="qualityGrid"></div>
+    </div>
+
+    <div class="panel-block preview-block">
+      <div class="preview-box">
+        <div class="preview-name" id="previewName">C</div>
+        <div class="variant-switcher">
+          <button type="button" id="variantPrevBtn" class="variant-arrow-btn" title="前のフォーム" aria-label="前のフォーム">◀</button>
+          <div class="preview-diagram" id="previewDiagram"></div>
+          <button type="button" id="variantNextBtn" class="variant-arrow-btn" title="次のフォーム" aria-label="次のフォーム">▶</button>
+        </div>
+        <div class="variant-label" id="variantLabel"></div>
+        <p class="preview-note" id="previewNote"></p>
+      </div>
+      <div class="lyric-input-row">
+        <input id="lyricInput" type="text" placeholder="このコードに続く歌詞（空欄でもOK）" maxlength="200" />
+      </div>
+      <button id="addChordBtn" class="btn btn-accent btn-wide">＋ タイムラインに追加</button>
+    </div>
+
+    <div class="panel-block">
+      <h2 class="panel-title"><span class="panel-num">03</span>行を調整する</h2>
+      <div class="lyric-btn-row">
+        <button id="addLyricBtn" class="btn btn-secondary btn-wide">＋ 歌詞のみの行</button>
+        <button id="addLineBreakBtn" class="btn btn-ghost" title="タイムラインに改行を挿入">↵ 改行</button>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- 右パネル: タイムライン(楽譜) -->
+  <section class="timeline-panel" aria-label="楽譜タイムライン">
+    <div class="timeline-header">
+      <h2 class="panel-title no-num">楽譜タイムライン</h2>
+      <div class="view-toggle" role="tablist">
+        <button id="editModeBtn" class="toggle-btn active" role="tab">編集</button>
+        <button id="previewModeBtn" class="toggle-btn" role="tab">プレビュー</button>
+      </div>
+    </div>
+
+    <div id="timelineEdit" class="timeline-edit"></div>
+    <div id="timelinePreview" class="timeline-preview hidden"></div>
+  </section>
+
+</main>
+
+<!-- 曲一覧モーダル -->
+<div id="songListModal" class="modal hidden">
+  <div class="modal-overlay" id="modalOverlay"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>保存した楽譜</h2>
+      <button id="closeModalBtn" class="close-btn" aria-label="閉じる">×</button>
+    </div>
+    <div id="songListBody" class="song-list-body"></div>
+  </div>
+</div>
+
+<!-- 一括インポートモーダル -->
+<div id="importModal" class="modal hidden">
+  <div class="modal-overlay" id="importOverlay"></div>
+  <div class="modal-content modal-wide">
+    <div class="modal-header">
+      <h2>歌詞・コードを一括インポート</h2>
+      <button id="closeImportBtn" class="close-btn" aria-label="閉じる">×</button>
+    </div>
+    <p class="import-hint">
+      U-FRETのように「1行目にコード、2行目に歌詞」の形式で貼り付けると、コードの位置に合わせて自動で「コード＋歌詞」のブロックに変換されます。コードだけの行や、コードのない歌詞だけの行にも対応しています。
+    </p>
+    <textarea id="importTextarea" class="import-textarea" placeholder="例）
+C          G          Am
+きらきら   ひかる     おそらの
+
+F      C
+ほしたちよ"></textarea>
+    <button id="generateImportBtn" class="btn btn-accent btn-wide">楽譜を自動生成する</button>
+  </div>
+</div>
+
+<div id="chordPopup" class="chord-popup hidden">
+  <div class="chord-popup-name" id="chordPopupName"></div>
+  <div class="variant-switcher">
+    <button type="button" id="popupVariantPrevBtn" class="variant-arrow-btn" title="前のフォーム" aria-label="前のフォーム">◀</button>
+    <div class="chord-popup-diagram" id="chordPopupDiagram"></div>
+    <button type="button" id="popupVariantNextBtn" class="variant-arrow-btn" title="次のフォーム" aria-label="次のフォーム">▶</button>
+  </div>
+  <div class="variant-label" id="popupVariantLabel"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<div class="sound-control" id="soundControl">
+  <button id="muteBtn" class="sound-btn" title="ミュート切り替え" aria-label="ミュート切り替え">🔊</button>
+  <input id="volumeSlider" type="range" min="0" max="100" value="70" title="音量" aria-label="音量" />
+</div>
+
+<script src="chords-data.js"></script>
+<script src="diagram.js"></script>
+<script src="audio.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

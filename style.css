@@ -1,0 +1,801 @@
+/* ============================================================
+   Design tokens
+   Subject: モダン・ダークモードのコード譜メーカー
+   Palette : ダークグレー(bg/surface) + ホワイト(text) + ビビッドオレンジ(accent)
+   Type    : Zilla Slab(見出し/コード名の力強さ) + Work Sans(本文) + JetBrains Mono(コード記号・タブ譜感)
+   ============================================================ */
+:root {
+  --bg: #121212;
+  --surface: #1A1A1A;
+  --surface-2: #232323;
+  --surface-3: #2C2C2C;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-soft: rgba(255, 255, 255, 0.14);
+
+  --text: #FFFFFF;
+  --text-soft: rgba(255, 255, 255, 0.62);
+  --text-faint: rgba(255, 255, 255, 0.38);
+
+  --accent: #FF6B00;
+  --accent-deep: #E05E00;
+  --accent-tint: rgba(255, 107, 0, 0.16);
+  --accent-ink: #1A0F00;
+
+  --danger: #FF5C5C;
+  --danger-tint: rgba(255, 92, 92, 0.16);
+
+  --white: #FFFFFF;
+
+  --radius-sm: 8px;
+  --radius-chip: 10px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  --font-display: "Zilla Slab", serif;
+  --font-body: "Work Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --shadow-card: 0 18px 40px -24px rgba(0, 0, 0, 0.65);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+input {
+  font-family: var(--font-body);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------- Header ---------------- */
+.app-header {
+  background: var(--surface);
+  color: var(--text);
+  padding: 18px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  font-size: 34px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.brand h1 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.brand-sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.song-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.title-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid var(--border-soft);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 14px;
+  width: 220px;
+}
+
+.title-input::placeholder { color: var(--text-faint); }
+
+/* ---------------- Buttons ---------------- */
+.btn {
+  border-radius: var(--radius-sm);
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1.5px solid transparent;
+  transition: transform 0.06s ease, filter 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { filter: brightness(1.08); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-soft);
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+
+.btn-accent { background: var(--accent); color: var(--accent-ink); }
+.btn-accent:hover { filter: brightness(1.1); }
+
+.btn-secondary { background: var(--surface-2); color: var(--text); border-color: var(--border-soft); }
+.btn-secondary:hover { background: var(--surface-3); }
+
+.btn-wide { width: 100%; padding: 11px 16px; font-size: 14px; }
+
+/* ---------------- Layout ---------------- */
+.workspace {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 22px;
+  padding: 24px 28px 60px;
+  max-width: 1280px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+@media (max-width: 920px) {
+  .workspace { grid-template-columns: 1fr; padding: 18px 14px 48px; }
+}
+
+.builder-panel, .timeline-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.panel-block { margin-bottom: 22px; }
+.panel-block:last-child { margin-bottom: 0; }
+
+.panel-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.panel-title.no-num { margin: 0; }
+
+.panel-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* ---------------- Root / Quality grids ---------------- */
+.root-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.chip-btn {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--surface-2);
+  border: 1.5px solid transparent;
+  color: var(--text);
+  border-radius: var(--radius-chip);
+  padding: 9px 4px;
+  text-align: center;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+.chip-btn:hover { background: var(--surface-3); }
+.chip-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.quality-grid .chip-btn { font-size: 12.5px; }
+
+/* ---------------- Chord preview ---------------- */
+.preview-block { display: flex; flex-direction: column; gap: 12px; }
+
+.preview-box {
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: center;
+}
+
+.preview-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.preview-diagram { display: flex; justify-content: center; }
+.preview-diagram .chord-svg { width: 84px; height: 104px; }
+
+.preview-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--text-soft);
+  min-height: 14px;
+}
+
+/* ---------------- コードフォーム(ポジション)切り替え ---------------- */
+.variant-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.variant-arrow-btn {
+  border: none;
+  background: var(--surface-3);
+  color: var(--text-soft);
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.variant-arrow-btn:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
+.variant-arrow-btn:disabled { opacity: 0.3; cursor: default; }
+
+.variant-label {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-soft);
+  text-align: center;
+}
+
+.tl-variant-switcher .variant-arrow-btn { width: 18px; height: 18px; font-size: 8px; }
+
+/* SVG chord diagram */
+.chord-svg .string-line { stroke: var(--text); stroke-width: 1; opacity: 0.85; }
+.chord-svg .fret-line { stroke: var(--text); stroke-width: 1; opacity: 0.35; }
+.chord-svg .fret-line.nut { stroke: var(--text); opacity: 0.9; }
+.chord-svg .finger-dot { fill: var(--accent); }
+.chord-svg .finger-dot.root { fill: var(--danger); }
+.chord-svg .finger-dot.bass-note { stroke: #ffffff; stroke-width: 1.6; }
+.chord-svg .barre-bar { stroke: var(--accent); opacity: 0.95; }
+.chord-svg .mute-mark { fill: var(--danger); font-size: 13px; font-weight: 700; }
+.chord-svg .open-mark { fill: var(--text); font-size: 12px; font-weight: 700; }
+.chord-svg .open-mark.bass-note { fill: var(--accent); }
+.chord-svg .fret-label { fill: var(--text); font-size: 15px; font-weight: 700; font-family: var(--font-mono); }
+.chord-svg.compact .fret-label { font-size: 11px; }
+.chord-svg .fret-label.two-digit { font-size: 11px; }
+.chord-svg.compact .fret-label.two-digit { font-size: 8px; }
+
+/* 度数ラベル(R/3/5/7等)。丸の中に白抜きで表示する学習用表示 */
+.chord-svg .degree-label {
+  fill: #ffffff;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  pointer-events: none;
+}
+.chord-svg.compact .degree-label { font-size: 5px; }
+
+/* ---------------- Lyric input ---------------- */
+.lyric-input-row input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1.5px solid transparent;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+.lyric-input-row input::placeholder { color: var(--text-faint); }
+.lyric-input-row input:focus { border-color: var(--accent); }
+
+.lyric-btn-row { display: flex; gap: 8px; }
+.lyric-btn-row .btn-wide { flex: 1; }
+
+/* ---------------- Timeline panel ---------------- */
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.view-toggle {
+  display: flex;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 2px;
+}
+
+.toggle-btn {
+  border: none;
+  background: transparent;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 5px;
+  color: var(--text-soft);
+}
+.toggle-btn.active { background: var(--accent); color: var(--accent-ink); }
+
+.timeline-edit {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 22px;
+  min-height: 120px;
+}
+
+.timeline-empty {
+  border: 1.5px dashed var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 13.5px;
+}
+
+.tl-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  cursor: grab;
+  transition: background 0.12s ease;
+}
+.tl-item:hover { background: rgba(255, 255, 255, 0.04); }
+.tl-item.type-linebreak { padding: 4px 6px; flex-basis: 100%; }
+
+.tl-item:active { cursor: grabbing; }
+.tl-item.dragging { opacity: 0.35; }
+.tl-item.drag-over-before { box-shadow: inset 3px 0 0 var(--accent); }
+.tl-item.drag-over-after { box-shadow: inset -3px 0 0 var(--accent); }
+
+.tl-drag {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.tl-seg-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 72px;
+  max-width: 180px;
+}
+
+.tl-seg-chord-empty {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-style: italic;
+  margin-bottom: 2px;
+}
+
+.tl-thumb { width: 46px; height: 57px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.tl-thumb .chord-svg { width: 42px; height: 52px; }
+
+.tl-chord-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 14px;
+  margin-top: -2px;
+  margin-bottom: 2px;
+}
+
+/* 辞書にない特殊なコード: ダイアグラムなしでコード名だけを大きく見せる */
+.tl-chord-name.tl-chord-name-lg {
+  font-size: 20px;
+  margin: 4px 0;
+}
+
+.tl-lyric-text {
+  font-size: 14.5px;
+  color: var(--text);
+  padding: 4px 4px;
+  border-radius: 4px;
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+  word-break: break-word;
+  cursor: text;
+}
+.tl-lyric-text:empty::before { content: "歌詞なし"; color: var(--text-faint); font-style: italic; font-size: 12.5px; }
+.tl-lyric-text[contenteditable="true"]:focus { background: rgba(255, 255, 255, 0.05); outline: 1.5px solid var(--accent); }
+
+.tl-linebreak-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.15em;
+}
+.tl-linebreak-label::before,
+.tl-linebreak-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-soft);
+}
+
+.tl-controls { display: flex; gap: 4px; flex-shrink: 0; }
+
+.tl-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tl-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.tl-btn.danger:hover { background: var(--danger-tint); color: var(--danger); }
+
+/* ---------------- Timeline preview (manuscript view) ---------------- */
+.timeline-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  row-gap: 44px;
+  column-gap: 8px;
+  background: transparent;
+  padding: 28px 22px;
+  font-size: 16px;
+  min-height: 120px;
+}
+
+.pv-segment {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 10px;
+  padding: 0 4px;
+}
+
+.pv-chord {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent);
+  background: transparent;
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: text-shadow 0.15s ease;
+}
+.pv-chord:hover { filter: brightness(1.15); }
+.pv-chord.active { text-shadow: 0 0 10px rgba(255, 107, 0, 0.7); }
+.pv-chord-empty { visibility: hidden; cursor: default; }
+
+.pv-lyric { color: var(--text); white-space: pre; font-size: 16.5px; letter-spacing: 0.01em; }
+
+.pv-break {
+  flex-basis: 100%;
+  height: 18px;
+  display: flex;
+  align-items: center;
+}
+.pv-break::after {
+  content: "";
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-soft);
+}
+
+.hidden { display: none !important; }
+
+/* ---------------- Chord select-to-view popup ---------------- */
+.tl-thumb, .tl-chord-name { cursor: pointer; }
+.tl-item.active { background: rgba(255, 107, 0, 0.1); }
+
+.chord-popup {
+  position: fixed;
+  z-index: 200;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.75);
+  padding: 14px 18px;
+  text-align: center;
+  animation: chordPopupIn 0.12s ease;
+}
+
+.chord-popup-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.chord-popup-diagram { display: flex; justify-content: center; }
+.chord-popup-diagram .chord-svg { width: 100px; height: 124px; }
+
+/* 辞書にない特殊なコード: ダイアグラムを空欄にし、代わりに案内テキストを薄く表示 */
+.chord-popup-diagram.empty {
+  min-width: 100px;
+  min-height: 60px;
+  align-items: center;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.chord-popup-diagram.empty::before { content: "ダイアグラム未対応"; }
+
+@keyframes chordPopupIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------- Modal ---------------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.modal-content {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.modal-header h2 { font-family: var(--font-display); margin: 0; font-size: 19px; color: var(--text); }
+
+.modal-content.modal-wide { width: min(680px, 94vw); }
+
+.import-hint {
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.import-textarea {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  background: var(--surface-2);
+  border: 1.5px solid transparent;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.6;
+  white-space: pre;
+  margin-bottom: 12px;
+}
+.import-textarea::placeholder { color: var(--text-faint); }
+.import-textarea:focus { border-color: var(--accent); }
+
+.close-btn {
+  border: none;
+  background: var(--surface-2);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  font-size: 18px;
+  color: var(--text-soft);
+}
+.close-btn:hover { background: var(--surface-3); color: var(--text); }
+
+.song-list-body { display: flex; flex-direction: column; gap: 8px; }
+
+.song-list-empty { padding: 30px 10px; text-align: center; color: var(--text-soft); font-size: 13.5px; }
+
+.song-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.song-row-info { min-width: 0; }
+.song-row-title { font-weight: 600; font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.song-row-meta { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; }
+
+.song-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ---------------- Toast ---------------- */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+
+/* ---------------- Sound control (mute / volume) ---------------- */
+.sound-control {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 8px 16px 8px 8px;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+}
+
+.sound-btn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 17px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sound-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+.sound-control input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+/* ---------------- Clickable chord diagrams (play sound) ---------------- */
+.preview-diagram, .chord-popup-diagram { cursor: pointer; }
+
+/* ============================================================
+   レスポンシブ対応（スマホ縦画面向け）
+   ============================================================ */
+html, body { overflow-x: hidden; }
+
+@media (max-width: 768px) {
+  .workspace { gap: 16px; padding: 14px 12px 40px; }
+
+  .app-header { padding: 14px 16px; gap: 10px; }
+  .brand-mark { font-size: 28px; }
+  .brand h1 { font-size: 19px; }
+  .brand-sub { font-size: 11.5px; }
+
+  .song-title-row { width: 100%; }
+  .title-input { flex: 1 1 100%; width: auto; }
+
+  .builder-panel, .timeline-panel { padding: 14px; }
+
+  /* ボタングリッドを画面幅いっぱいの3〜4列に調整し、タップしやすくする */
+  .root-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .quality-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .chip-btn { padding: 12px 4px; font-size: 15px; }
+  .quality-grid .chip-btn { font-size: 13px; }
+
+  .timeline-edit { gap: 8px 14px; }
+  .timeline-preview { row-gap: 34px; column-gap: 6px; padding: 20px 14px; font-size: 15px; }
+  .pv-lyric { font-size: 15.5px; }
+
+  /* タイムラインの操作ボタンをタップしやすい大きさに */
+  .tl-btn { width: 30px; height: 30px; font-size: 14px; }
+  .tl-drag { font-size: 15px; padding: 2px 4px; }
+
+  .chord-popup { padding: 12px 14px; }
+  .chord-popup-diagram .chord-svg { width: 84px; height: 104px; }
+
+  .modal-content { width: min(94vw, 480px); padding: 16px; }
+
+  .song-row { flex-wrap: wrap; }
+  .song-row-info { flex: 1 1 100%; }
+
+  /* 隅の音量パネルをコンパクトに */
+  .sound-control { right: 12px; bottom: 12px; padding: 6px 10px 6px 6px; gap: 6px; }
+  .sound-btn { width: 30px; height: 30px; font-size: 16px; }
+  .sound-control input[type="range"] { width: 64px; }
+}
+
+@media (max-width: 420px) {
+  .root-grid { grid-template-columns: repeat(3, 1fr); }
+
+  .preview-diagram .chord-svg { width: 72px; height: 90px; }
+  .tl-thumb { width: 40px; height: 50px; }
+  .tl-thumb .chord-svg { width: 36px; height: 45px; }
+
+  .brand h1 { font-size: 17px; }
+  .title-input { font-size: 13px; }
+
+  .sound-control input[type="range"] { width: 48px; }
+}
