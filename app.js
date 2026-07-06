@@ -12,7 +12,8 @@ const state = {
   variantIndex: 0,    // ビルダーで選んでいる押さえ方のバリエーション(フォーム)の番号
   timeline: [],       // {id, type: 'segment'|'linebreak', root?, qualityKey?, name?, lyricText?, variantIndex?}
   currentSongId: null,
-  mode: "edit",       // 'edit' | 'preview'
+  mode: "edit",       // 'edit' | 'preview'  (タイムライン内の 編集/プレビュー サブビュー)
+  appMode: "edit",    // 'edit' | 'view'     (画面全体: 編集画面 or 保存曲の閲覧画面)
 };
 
 // item.root/qualityKey から使えるフォーム一覧と、item.variantIndex が指す現在のフォームを取得する
@@ -42,11 +43,6 @@ const el = {
   songTitleInput: document.getElementById("songTitleInput"),
   newSongBtn: document.getElementById("newSongBtn"),
   saveSongBtn: document.getElementById("saveSongBtn"),
-  openListBtn: document.getElementById("openListBtn"),
-  songListModal: document.getElementById("songListModal"),
-  modalOverlay: document.getElementById("modalOverlay"),
-  closeModalBtn: document.getElementById("closeModalBtn"),
-  songListBody: document.getElementById("songListBody"),
   toast: document.getElementById("toast"),
   chordPopup: document.getElementById("chordPopup"),
   chordPopupName: document.getElementById("chordPopupName"),
@@ -65,6 +61,24 @@ const el = {
   popupVariantPrevBtn: document.getElementById("popupVariantPrevBtn"),
   popupVariantNextBtn: document.getElementById("popupVariantNextBtn"),
   popupVariantLabel: document.getElementById("popupVariantLabel"),
+  openChordLookupBtn: document.getElementById("openChordLookupBtn"),
+  chordLookupModal: document.getElementById("chordLookupModal"),
+  chordLookupOverlay: document.getElementById("chordLookupOverlay"),
+  closeChordLookupBtn: document.getElementById("closeChordLookupBtn"),
+  chordLookupGrid: document.getElementById("chordLookupGrid"),
+  hamburgerBtn: document.getElementById("hamburgerBtn"),
+  songDrawer: document.getElementById("songDrawer"),
+  songDrawerOverlay: document.getElementById("songDrawerOverlay"),
+  closeDrawerBtn: document.getElementById("closeDrawerBtn"),
+  drawerSongListBody: document.getElementById("drawerSongListBody"),
+  editingHeaderControls: document.getElementById("editingHeaderControls"),
+  viewTitleDisplay: document.getElementById("viewTitleDisplay"),
+  headerMenuBtn: document.getElementById("headerMenuBtn"),
+  headerMenuDropdown: document.getElementById("headerMenuDropdown"),
+  enterEditModeBtn: document.getElementById("enterEditModeBtn"),
+  enterViewModeBtn: document.getElementById("enterViewModeBtn"),
+  builderPanel: document.querySelector(".builder-panel"),
+  timelineHeaderToggle: document.querySelector(".timeline-header .view-toggle"),
 };
 
 /* ---------- ユーティリティ ---------- */
@@ -176,8 +190,7 @@ el.variantNextBtn.addEventListener("click", () => {
 
 // ビルダーのダイアグラムをクリックしたら、今選んでいるコードの音を鳴らす
 el.previewDiagram.addEventListener("click", () => {
-  const variants = currentBuilderVariants();
-  playChordStrum(variants[state.variantIndex].frets);
+  playChordStrum(state.root, state.qualityKey);
 });
 
 // コード + 歌詞をセットでタイムラインに追加（U-FRET風の1ブロック）
@@ -188,6 +201,9 @@ el.addChordBtn.addEventListener("click", () => {
     root: state.root,
     qualityKey: state.qualityKey,
     name: buildChordName(state.root, state.qualityKey),
+    bass: null,
+    altered5: null,
+    tensions: [],
     lyricText: el.lyricInput.value.trim(),
     variantIndex: state.variantIndex,
   });
@@ -223,6 +239,10 @@ function renderTimeline() {
   renderTimelineEdit();
   renderTimelinePreview();
   saveDraft();
+  // 逆引き一覧を開いている間にタイムラインが変わったら、その場で最新の内容に更新する
+  if (!el.chordLookupModal.classList.contains("hidden")) {
+    renderChordLookup();
+  }
 }
 
 function renderTimelineEdit() {
@@ -431,9 +451,7 @@ function toggleChordPopup(anchorEl) {
   if (!item || !item.root) return;
 
   if (item.qualityKey) {
-    const variants = getItemVariants(item);
-    const idx = clampVariantIndex(item.variantIndex || 0, variants.length);
-    playChordStrum(variants[idx].frets);
+    playChordStrum(item.root, item.qualityKey, item.tensions, item.altered5);
   }
 
   if (activeChordPopupId === id) {
@@ -520,9 +538,7 @@ function positionChordPopup(anchorEl) {
 el.chordPopupDiagram.addEventListener("click", () => {
   const item = state.timeline.find((i) => i.id === activeChordPopupId);
   if (!item || !item.root || !item.qualityKey) return;
-  const variants = getItemVariants(item);
-  const idx = clampVariantIndex(item.variantIndex || 0, variants.length);
-  playChordStrum(variants[idx].frets);
+  playChordStrum(item.root, item.qualityKey, item.tensions, item.altered5);
 });
 
 document.addEventListener("click", (e) => {
@@ -567,34 +583,34 @@ const FLAT_TO_SHARP = {
   "E#": "F", "B#": "C", Cb: "B", Fb: "E",
 };
 
-// 対応していない品質(add9等)は近いコードフォームへ近似し、表示名(name)には元の表記をそのまま残す
+// 対応していない品質(add11等)は近いコードフォームへ近似し、表示名(name)には元の表記をそのまま残す
 const QUALITY_ALIASES = {
   "": "maj", maj: "maj", M: "maj",
   m: "m", min: "m",
-  "7": "7", "11": "7",
-  m7: "m7", min7: "m7", minor7: "m7", m7b5: "m7", m11: "m7",
+  "7": "7", "11": "7", "13": "13",
+  m7: "m7", min7: "m7", minor7: "m7", m7b5: "m7b5", m11: "m7", m9: "m9",
   mM7: "m",
-  maj7: "maj7", M7: "maj7",
-  sus4: "sus4", sus: "sus4", sus2: "sus4", "7sus4": "sus4",
+  maj7: "maj7", M7: "maj7", maj9: "maj9",
+  sus4: "sus4", sus: "sus4", sus2: "sus2", "7sus4": "sus4",
   "6": "6",
-  m6: "m6", "69": "6",
+  m6: "m6", "69": "69",
   dim: "dim", dim7: "dim",
-  aug: "aug", aug7: "aug",
+  aug: "aug", aug7: "aug7",
   "9": "9",
-  add9: "maj", add11: "maj",
+  add9: "add9", add11: "maj",
 };
 
 // 既知の品質表記(コード名から自動でダイアグラムを引ける範囲)。
 // 前方一致で解析するため、短い表記(例:"m")は必ずそれを含む長い表記(例:"m7","mM7")より後に置く。
 // これを誤ると「連結してしまったコードの分割」や「A7sus4のような複合語」が正しく切り出せなくなる。
 const CHORD_QUALITY_PATTERN = [
-  "mM7", "m7b5", "m7", "m6", "m11", "minor7", "min7", "maj7", "min", "maj", "m",
+  "mM7", "m7b5", "m7", "m6", "m11", "m9", "minor7", "min7", "maj7", "maj9", "min", "maj", "m",
   "M7", "M",
   "7sus4", "sus4", "sus2", "sus",
   "dim7", "dim",
   "aug7", "aug",
   "add9", "add11",
-  "69", "6", "7", "9", "11",
+  "69", "6", "7", "9", "11", "13",
 ].join("|");
 
 // ルート、品質、フラット5度(-5等)、テンション(9,13等のカッコ表記)、ベース音(オンコード)まで
@@ -606,6 +622,24 @@ const CHORD_PREFIX_REGEX = new RegExp(`^${CHORD_PATTERN_BODY}`);
 
 function normalizeAccidentals(str) {
   return str.replace(/♯/g, "#").replace(/♭/g, "b");
+}
+
+// "-5"/"b5" → "b5"、"+5"/"#5" → "#5" に正規化する(どちらも同じ意味の表記のゆらぎ)
+function normalizeAltered5(suffix) {
+  if (!suffix) return null;
+  if (suffix === "-5" || suffix === "b5") return "b5";
+  if (suffix === "+5" || suffix === "#5") return "#5";
+  return null;
+}
+
+// "(9,13)" や "(b9,b13)" のようなカッコ内テンション表記を ["9","13"] のような配列に分解する
+function parseTensionParens(parenText) {
+  if (!parenText) return [];
+  const inner = parenText.slice(1, -1);
+  return inner
+    .split(",")
+    .map((t) => normalizeAccidentals(t.trim()))
+    .filter(Boolean);
 }
 
 /**
@@ -650,7 +684,7 @@ function parseChordToken(rawToken) {
   const match = CHORD_PREFIX_REGEX.exec(normalized);
   if (!match || match[0].length === 0) return null;
 
-  const [, letter, accidental, qualityRaw, , , bassLetter, bassAccidental] = match;
+  const [, letter, accidental, qualityRaw, altered5Raw, tensionParensRaw, bassLetter, bassAccidental] = match;
   const rawRoot = letter + (accidental || "");
   const root = FLAT_TO_SHARP[rawRoot] || rawRoot;
 
@@ -660,12 +694,15 @@ function parseChordToken(rawToken) {
     bass = FLAT_TO_SHARP[rawBass] || rawBass;
   }
 
-  // カッコ内のテンションや読めない残り文字がある場合、品質を確実には断定できないため
+  const altered5 = normalizeAltered5(altered5Raw);
+  const tensions = parseTensionParens(tensionParensRaw);
+
+  // 読めない残り文字がある場合、品質を確実には断定できないため
   // ダイアグラムは省略し、コード名だけを表示するフォールバックに回す。
   const leftover = normalized.slice(match[0].length);
   const qualityKey = leftover ? null : QUALITY_ALIASES[qualityRaw || ""] || "maj";
 
-  return { root, qualityKey, name: rawToken, bass };
+  return { root, qualityKey, name: rawToken, bass, altered5, tensions };
 }
 
 // 全角文字(ひらがな・カタカナ・漢字・全角記号など)は半角の2倍の表示幅として数える。
@@ -729,6 +766,8 @@ function makeChordSegment(token, lyricText) {
     qualityKey: parsed.qualityKey,
     name: parsed.name,
     bass: parsed.bass || null,
+    altered5: parsed.altered5 || null,
+    tensions: parsed.tensions || [],
     lyricText: (lyricText || "").trim(),
     variantIndex: 0,
   };
@@ -832,6 +871,75 @@ el.generateImportBtn.addEventListener("click", () => {
 });
 
 /* ============================================================
+   コード逆引き一覧: タイムラインに登場するコードを重複なく抽出して表示する
+   ============================================================ */
+
+// コード名(name)をキーに重複を排除し、タイムライン内で最初に登場した順を保つ
+function getUniqueTimelineChords() {
+  const seen = new Set();
+  const unique = [];
+  state.timeline.forEach((item) => {
+    if (item.type !== "segment" || !item.root || !item.name) return;
+    if (seen.has(item.name)) return;
+    seen.add(item.name);
+    unique.push(item);
+  });
+  return unique;
+}
+
+function renderChordLookupCard(item) {
+  if (!item.qualityKey) {
+    // 辞書にない特殊なコード: 名前だけを大きく表示する
+    return `
+      <div class="chord-lookup-card">
+        <div class="chord-lookup-name" style="font-size:18px;">${escapeHtml(item.name)}</div>
+        <div class="chord-lookup-root">ルート: <b>${escapeHtml(item.root)}</b></div>
+        <div class="chord-lookup-unsupported">構成音・ダイアグラム未対応</div>
+      </div>
+    `;
+  }
+
+  const variants = getItemVariants(item);
+  const idx = clampVariantIndex(item.variantIndex || 0, variants.length);
+  const diagramSvg = renderChordSvg(variants[idx].frets, { compact: true, root: item.root, bass: item.bass });
+  const tones = getChordTones(item.root, item.qualityKey);
+  const tonesHtml = tones
+    .map((t) => `<span class="chord-lookup-tone${t.degree === "R" ? " root" : ""}">${escapeHtml(t.note)}(${escapeHtml(t.degree)})</span>`)
+    .join("");
+
+  return `
+    <div class="chord-lookup-card">
+      <div class="chord-lookup-name">${escapeHtml(item.name)}</div>
+      <div class="chord-lookup-root">ルート: <b>${escapeHtml(item.root)}</b>${item.bass ? ` / オンベース: <b>${escapeHtml(item.bass)}</b>` : ""}</div>
+      <div class="chord-lookup-diagram">${diagramSvg}</div>
+      <div class="chord-lookup-tones">${tonesHtml}</div>
+    </div>
+  `;
+}
+
+function renderChordLookup() {
+  const chords = getUniqueTimelineChords();
+  if (chords.length === 0) {
+    el.chordLookupGrid.innerHTML = `<div class="chord-lookup-empty">タイムラインにまだコードがありません。</div>`;
+    return;
+  }
+  el.chordLookupGrid.innerHTML = chords.map(renderChordLookupCard).join("");
+}
+
+function openChordLookupModal() {
+  renderChordLookup();
+  el.chordLookupModal.classList.remove("hidden");
+}
+
+function closeChordLookupModal() {
+  el.chordLookupModal.classList.add("hidden");
+}
+
+el.openChordLookupBtn.addEventListener("click", openChordLookupModal);
+el.closeChordLookupBtn.addEventListener("click", closeChordLookupModal);
+el.chordLookupOverlay.addEventListener("click", closeChordLookupModal);
+
+/* ============================================================
    楽譜の保存 / 読込 / 削除 (LocalStorage)
    ============================================================ */
 function loadAllSongs() {
@@ -909,6 +1017,7 @@ function newSong() {
   state.timeline = [];
   el.songTitleInput.value = "";
   clearDraft();
+  switchAppMode("edit");
   renderTimeline();
   showToast("新しい楽譜を作成しました");
 }
@@ -920,8 +1029,9 @@ function loadSong(id) {
   state.currentSongId = song.id;
   state.timeline = Array.isArray(song.timeline) ? song.timeline : [];
   el.songTitleInput.value = song.title || "";
+  switchAppMode("view");
   renderTimeline();
-  closeModal();
+  closeSongDrawer();
   showToast(`「${song.title}」を開きました`);
 }
 
@@ -939,10 +1049,10 @@ function deleteSong(id) {
 function renderSongList() {
   const songs = loadAllSongs().sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   if (songs.length === 0) {
-    el.songListBody.innerHTML = `<div class="song-list-empty">まだ保存された楽譜はありません。</div>`;
+    el.drawerSongListBody.innerHTML = `<div class="song-list-empty">まだ保存された楽譜はありません。</div>`;
     return;
   }
-  el.songListBody.innerHTML = songs
+  el.drawerSongListBody.innerHTML = songs
     .map((s) => {
       const date = s.updatedAt ? new Date(s.updatedAt).toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
       const chordCount = (s.timeline || []).filter((i) => i.type === "segment" && i.root).length;
@@ -962,7 +1072,7 @@ function renderSongList() {
     .join("");
 }
 
-el.songListBody.addEventListener("click", (e) => {
+el.drawerSongListBody.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const row = e.target.closest(".song-row");
@@ -971,21 +1081,71 @@ el.songListBody.addEventListener("click", (e) => {
   if (btn.dataset.action === "delete") deleteSong(id);
 });
 
-function openModal() {
+/* ============================================================
+   左上ハンバーガーメニュー: 保存曲ドロワー
+   ============================================================ */
+function openSongDrawer() {
   renderSongList();
-  el.songListModal.classList.remove("hidden");
+  el.songDrawer.classList.add("open");
+  el.songDrawerOverlay.classList.add("open");
 }
-function closeModal() {
-  el.songListModal.classList.add("hidden");
+function closeSongDrawer() {
+  el.songDrawer.classList.remove("open");
+  el.songDrawerOverlay.classList.remove("open");
 }
 
-el.openListBtn.addEventListener("click", openModal);
-el.closeModalBtn.addEventListener("click", closeModal);
-el.modalOverlay.addEventListener("click", closeModal);
+el.hamburgerBtn.addEventListener("click", openSongDrawer);
+el.closeDrawerBtn.addEventListener("click", closeSongDrawer);
+el.songDrawerOverlay.addEventListener("click", closeSongDrawer);
+
+/* ============================================================
+   閲覧モード(保存曲を開いた直後) / 編集モードの切り替え
+   ============================================================ */
+function switchAppMode(mode) {
+  state.appMode = mode;
+  const isView = mode === "view";
+
+  document.body.classList.toggle("app-view-mode", isView);
+  el.editingHeaderControls.classList.toggle("hidden", isView);
+  el.viewTitleDisplay.classList.toggle("hidden", !isView);
+  el.viewTitleDisplay.textContent = el.songTitleInput.value.trim() || "(無題)";
+  el.builderPanel.classList.toggle("hidden", isView);
+  el.timelineHeaderToggle.classList.toggle("hidden", isView);
+
+  el.enterEditModeBtn.classList.toggle("hidden", !isView);
+  el.enterViewModeBtn.classList.toggle("hidden", isView);
+
+  switchMode(isView ? "preview" : "edit");
+}
+
+function closeHeaderMenu() {
+  el.headerMenuDropdown.classList.add("hidden");
+}
+
+el.headerMenuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  el.headerMenuDropdown.classList.toggle("hidden");
+});
+el.enterEditModeBtn.addEventListener("click", () => {
+  switchAppMode("edit");
+  closeHeaderMenu();
+});
+el.enterViewModeBtn.addEventListener("click", () => {
+  switchAppMode("view");
+  closeHeaderMenu();
+});
+document.addEventListener("click", (e) => {
+  if (el.headerMenuDropdown.classList.contains("hidden")) return;
+  if (e.target.closest(".header-menu")) return;
+  closeHeaderMenu();
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    closeModal();
+    closeSongDrawer();
     closeImportModal();
+    closeChordLookupModal();
+    closeHeaderMenu();
     hideChordPopup();
   }
 });
@@ -1030,7 +1190,7 @@ function init() {
   renderQualityGrid();
   updatePreview();
   renderTimeline();
-  switchMode("edit");
+  switchAppMode("edit");
   setVolume(Number(el.volumeSlider.value) / 100);
   updateSoundIcon();
 }

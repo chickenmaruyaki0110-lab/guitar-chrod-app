@@ -11,6 +11,8 @@
 <body>
 
 <header class="app-header">
+  <button id="hamburgerBtn" class="icon-btn" title="保存した楽譜を開く" aria-label="メニューを開く">☰</button>
+
   <div class="brand">
     <span class="brand-mark" aria-hidden="true">♪</span>
     <div>
@@ -19,12 +21,23 @@
     </div>
   </div>
 
-  <div class="song-title-row">
+  <div class="view-title hidden" id="viewTitleDisplay"></div>
+
+  <div class="song-title-row" id="editingHeaderControls">
     <input id="songTitleInput" class="title-input" type="text" placeholder="曲のタイトルを入力…" maxlength="60" />
     <button id="newSongBtn" class="btn btn-ghost" title="新しい楽譜を作成">新規</button>
     <button id="saveSongBtn" class="btn btn-primary" title="この楽譜を保存">保存</button>
-    <button id="openListBtn" class="btn btn-ghost" title="保存した楽譜の一覧を開く">曲一覧</button>
     <button id="openImportBtn" class="btn btn-ghost" title="歌詞とコードをまとめて貼り付けて自動生成">一括インポート</button>
+  </div>
+
+  <button id="openChordLookupBtn" class="btn btn-ghost" title="この曲に登場するコードの一覧（逆引き）を見る">コード一覧</button>
+
+  <div class="header-menu">
+    <button id="headerMenuBtn" class="icon-btn" title="メニュー" aria-label="メニューを開く">⋯</button>
+    <div id="headerMenuDropdown" class="header-menu-dropdown hidden">
+      <button id="enterEditModeBtn" class="menu-item hidden">✏️ このコード譜を編集する</button>
+      <button id="enterViewModeBtn" class="menu-item hidden">👁 プレビューに戻る</button>
+    </div>
   </div>
 </header>
 
@@ -86,17 +99,15 @@
 
 </main>
 
-<!-- 曲一覧モーダル -->
-<div id="songListModal" class="modal hidden">
-  <div class="modal-overlay" id="modalOverlay"></div>
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>保存した楽譜</h2>
-      <button id="closeModalBtn" class="close-btn" aria-label="閉じる">×</button>
-    </div>
-    <div id="songListBody" class="song-list-body"></div>
+<!-- 保存曲ドロワー(ハンバーガーメニュー) -->
+<div id="songDrawerOverlay" class="drawer-overlay"></div>
+<aside id="songDrawer" class="song-drawer">
+  <div class="song-drawer-header">
+    <h2>保存した楽譜</h2>
+    <button id="closeDrawerBtn" class="close-btn" aria-label="閉じる">×</button>
   </div>
-</div>
+  <div id="drawerSongListBody" class="song-list-body"></div>
+</aside>
 
 <!-- 一括インポートモーダル -->
 <div id="importModal" class="modal hidden">
@@ -116,6 +127,19 @@ C          G          Am
 F      C
 ほしたちよ"></textarea>
     <button id="generateImportBtn" class="btn btn-accent btn-wide">楽譜を自動生成する</button>
+  </div>
+</div>
+
+<!-- コード逆引き一覧モーダル -->
+<div id="chordLookupModal" class="modal hidden">
+  <div class="modal-overlay" id="chordLookupOverlay"></div>
+  <div class="modal-content modal-wide">
+    <div class="modal-header">
+      <h2>登場コード一覧（逆引き）</h2>
+      <button id="closeChordLookupBtn" class="close-btn" aria-label="閉じる">×</button>
+    </div>
+    <p class="import-hint">楽譜タイムラインに登場するコードを重複なく抜き出して一覧表示します。</p>
+    <div id="chordLookupGrid" class="chord-lookup-grid"></div>
   </div>
 </div>
 

@@ -122,6 +122,98 @@ input {
 
 .title-input::placeholder { color: var(--text-faint); }
 
+/* ---------------- 閲覧モードの曲名表示 ---------------- */
+.view-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--text);
+}
+
+/* ---------------- アイコンボタン(ハンバーガー / ⋯メニュー) ---------------- */
+.icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* ---------------- 右上「⋯」ドロップダウンメニュー ---------------- */
+.header-menu { position: relative; }
+
+.header-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 120;
+  min-width: 200px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px -14px rgba(0, 0, 0, 0.7);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-item {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.menu-item:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* ---------------- 保存曲ドロワー(ハンバーガーメニュー) ---------------- */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 290;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+
+.song-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(320px, 85vw);
+  z-index: 300;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 20px 0 50px -20px rgba(0, 0, 0, 0.6);
+  padding: 18px;
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+.song-drawer.open { transform: translateX(0); }
+
+.song-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.song-drawer-header h2 { font-family: var(--font-display); margin: 0; font-size: 18px; color: var(--text); }
+
 /* ---------------- Buttons ---------------- */
 .btn {
   border-radius: var(--radius-sm);
@@ -166,6 +258,9 @@ input {
 @media (max-width: 920px) {
   .workspace { grid-template-columns: 1fr; padding: 18px 14px 48px; }
 }
+
+/* 閲覧モード: 操作パネルを隠すので、タイムラインを全幅に広げる */
+body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
 
 .builder-panel, .timeline-panel {
   background: var(--surface);
@@ -656,6 +751,71 @@ input {
 .import-textarea::placeholder { color: var(--text-faint); }
 .import-textarea:focus { border-color: var(--accent); }
 
+/* ---------------- コード逆引き一覧 ---------------- */
+.chord-lookup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.chord-lookup-empty {
+  grid-column: 1 / -1;
+  padding: 30px 10px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 13.5px;
+}
+
+.chord-lookup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: 14px 10px;
+}
+
+.chord-lookup-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  text-align: center;
+  word-break: break-word;
+}
+
+.chord-lookup-root {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+.chord-lookup-root b { color: var(--danger); font-weight: 700; }
+
+.chord-lookup-diagram .chord-svg { width: 66px; height: 82px; }
+
+.chord-lookup-tones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.chord-lookup-tone {
+  background: var(--surface-3);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.chord-lookup-tone.root { background: var(--danger); color: var(--white); }
+
+.chord-lookup-unsupported {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 .close-btn {
   border: none;
   background: var(--surface-2);
@@ -768,6 +928,11 @@ html, body { overflow-x: hidden; }
   .timeline-edit { gap: 8px 14px; }
   .timeline-preview { row-gap: 34px; column-gap: 6px; padding: 20px 14px; font-size: 15px; }
   .pv-lyric { font-size: 15.5px; }
+
+  /* 画面が狭くても必ず2つ以上横に並び、端まで来たら次の行へ折り返すようにする */
+  .tl-item.type-segment { flex: 0 1 auto; max-width: calc(50% - 7px); }
+  .tl-seg-body { min-width: 0; max-width: 100%; }
+  .tl-variant-switcher .variant-arrow-btn { width: 16px; height: 16px; font-size: 7px; }
 
   /* タイムラインの操作ボタンをタップしやすい大きさに */
   .tl-btn { width: 30px; height: 30px; font-size: 14px; }

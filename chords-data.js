@@ -22,7 +22,69 @@ const QUALITIES = [
   { key: "dim",  label: "dim",  desc: "ディミニッシュ" },
   { key: "aug",  label: "aug",  desc: "オーギュメント" },
   { key: "9",    label: "9",    desc: "ナインス" },
+  { key: "add9", label: "add9", desc: "アドナインス" },
+  { key: "maj9", label: "maj9", desc: "メジャーナインス" },
+  { key: "m9",   label: "m9",   desc: "マイナーナインス" },
+  { key: "69",   label: "6/9",  desc: "シックスナインス" },
+  { key: "sus2", label: "sus2", desc: "サスツー" },
+  { key: "m7b5", label: "m7b5", desc: "マイナーセブンフラットファイブ" },
+  { key: "aug7", label: "aug7", desc: "オーギュメントセブンス" },
+  { key: "13",   label: "13",   desc: "サーティーン" },
 ];
+
+// ルートからの半音差 → 度数表示ラベル(学習用に簡略化。長短は区別せず「3」「7」等で表示)
+const INTERVAL_DEGREE_LABELS = {
+  0: "R",
+  1: "♭9",
+  2: "9",
+  3: "3",
+  4: "3",
+  5: "4",
+  6: "♭5",
+  7: "5",
+  8: "♯5",
+  9: "6",
+  10: "7",
+  11: "7",
+};
+
+// 各コード品質(qualityKey)の構成音(ルートからの半音差)。コード逆引き一覧などで
+// 「このコードは何の音でできているか」を表示するために使う。
+const CHORD_INTERVALS = {
+  maj: [0, 4, 7],
+  m: [0, 3, 7],
+  "7": [0, 4, 7, 10],
+  m7: [0, 3, 7, 10],
+  maj7: [0, 4, 7, 11],
+  sus4: [0, 5, 7],
+  "6": [0, 4, 7, 9],
+  m6: [0, 3, 7, 9],
+  dim: [0, 3, 6],
+  aug: [0, 4, 8],
+  "9": [0, 4, 7, 10, 2],
+  add9: [0, 4, 7, 2],
+  maj9: [0, 4, 7, 11, 2],
+  m9: [0, 3, 7, 10, 2],
+  "69": [0, 4, 7, 9, 2],
+  sus2: [0, 2, 7],
+  m7b5: [0, 3, 6, 10],
+  aug7: [0, 4, 8, 10],
+  "13": [0, 4, 7, 10, 9],
+};
+
+/**
+ * コードの構成音を { degree(度数表示), note(音名) } の配列で返す。
+ * qualityKey が未対応(null)の場合は空配列を返す。
+ */
+function getChordTones(root, qualityKey) {
+  const intervals = CHORD_INTERVALS[qualityKey];
+  const rootSemitone = ROOT_NOTES.indexOf(root);
+  if (!intervals || rootSemitone < 0) return [];
+  return intervals.map((interval) => {
+    const semitone = (rootSemitone + interval) % 12;
+    return { degree: INTERVAL_DEGREE_LABELS[interval] || "?", note: ROOT_NOTES[semitone] };
+  });
+}
 
 // クロマチック(半音階) 各弦の開放弦を起点にした音名リスト。何フレット目がそのルート音かを調べるために使う。
 const E_CHROMATIC = ["E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#"]; // 6弦(E)基準
@@ -47,6 +109,18 @@ const E_SHAPE_OFFSETS = {
   "9":  [0, 2, 0, 1, 0, 2],
 };
 
+// 新しく追加した高度なテンションコードは、押さえ方(フォーム)を実在の検証済みシェイプから
+// 近いものを再利用して近似する(誤ったフィンガリングを新規に作らないための安全策)。
+// コード名・構成音・再生音は各コード固有のデータを使うが、ダイアグラムの形はこの近似形になる。
+E_SHAPE_OFFSETS.add9 = E_SHAPE_OFFSETS.maj;
+E_SHAPE_OFFSETS.maj9 = E_SHAPE_OFFSETS.maj7;
+E_SHAPE_OFFSETS.m9 = E_SHAPE_OFFSETS.m7;
+E_SHAPE_OFFSETS["69"] = E_SHAPE_OFFSETS["6"];
+E_SHAPE_OFFSETS.sus2 = E_SHAPE_OFFSETS.sus4;
+E_SHAPE_OFFSETS.m7b5 = E_SHAPE_OFFSETS.dim;
+E_SHAPE_OFFSETS.aug7 = E_SHAPE_OFFSETS.aug;
+E_SHAPE_OFFSETS["13"] = E_SHAPE_OFFSETS["7"];
+
 const A_SHAPE_OFFSETS = {
   maj:  [null, 0, 2, 2, 2, 0],
   m:    [null, 0, 2, 2, 1, 0],
@@ -60,6 +134,16 @@ const A_SHAPE_OFFSETS = {
   aug:  [null, 0, 3, 2, 2, 1],
   "9":  [null, 0, 2, 3, 2, 0],
 };
+
+// E型と同様、A型も既存の検証済みシェイプを再利用して近似する
+A_SHAPE_OFFSETS.add9 = A_SHAPE_OFFSETS.maj;
+A_SHAPE_OFFSETS.maj9 = A_SHAPE_OFFSETS.maj7;
+A_SHAPE_OFFSETS.m9 = A_SHAPE_OFFSETS.m7;
+A_SHAPE_OFFSETS["69"] = A_SHAPE_OFFSETS["6"];
+A_SHAPE_OFFSETS.sus2 = A_SHAPE_OFFSETS.sus4;
+A_SHAPE_OFFSETS.m7b5 = A_SHAPE_OFFSETS.dim;
+A_SHAPE_OFFSETS.aug7 = A_SHAPE_OFFSETS.aug;
+A_SHAPE_OFFSETS["13"] = A_SHAPE_OFFSETS["7"];
 
 /* ---------- よく使う「開放形」コードの手打ちデータ ----------
    初心者が最も目にする形（オープンコード）は自動生成だと不自然になりがちなので、
