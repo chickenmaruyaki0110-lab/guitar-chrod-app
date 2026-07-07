@@ -260,8 +260,9 @@ function renderTimelineEdit() {
   }
 
   el.timelineEdit.innerHTML = state.timeline
-    .map((item) => {
+    .map((item, index) => {
       let body = "";
+      let currentFrets = null;
       if (item.type === "segment") {
         let chordPart;
         if (!item.root) {
@@ -270,6 +271,7 @@ function renderTimelineEdit() {
           const variants = getItemVariants(item);
           const idx = clampVariantIndex(item.variantIndex || 0, variants.length);
           const variant = variants[idx];
+          currentFrets = variant.frets;
           const arrows =
             variants.length > 1
               ? `
@@ -287,6 +289,7 @@ function renderTimelineEdit() {
         } else {
           // 辞書にない特殊なコード: 自作ダイアグラムがあればそれを、無ければ近い品質のフォームを代用として表示する
           const diag = resolveChordDiagram(item);
+          currentFrets = diag.frets;
           const caption = diag.isCustom
             ? `<div class="tl-diagram-caption custom">自作フォーム</div>`
             : `<div class="tl-diagram-caption">(代用: ${escapeHtml(diag.substituteName)} フォーム)</div>`;
@@ -312,8 +315,27 @@ function renderTimelineEdit() {
         body = `<div class="tl-linebreak-label">↵ 改行</div>`;
       }
 
+      // 生体力学的分析: このコードから「次に弾くコード」への運指(Pivot/Guide)を判定し、
+      // ブロックのdata属性とアイテムオブジェクトの両方に保持する。
+      let pivotAttr = "";
+      let guideAttr = "";
+      if (currentFrets) {
+        const nextItem = getNextChordItem(index);
+        let pivotFingers = [];
+        let guideFingers = [];
+        if (nextItem) {
+          const nextFrets = resolveChordDiagram(nextItem).frets;
+          pivotFingers = findPivotFingers(currentFrets, nextFrets);
+          guideFingers = findGuideFingers(currentFrets, nextFrets);
+        }
+        item.pivotFingers = pivotFingers;
+        item.guideFingers = guideFingers;
+        pivotAttr = pivotFingers.map((p) => p.stringIndex).join(",");
+        guideAttr = guideFingers.map((g) => g.stringIndex).join(",");
+      }
+
       return `
-        <div class="tl-item type-${item.type}" data-id="${item.id}" draggable="true">
+        <div class="tl-item type-${item.type}" data-id="${item.id}" draggable="true" data-pivot="${pivotAttr}" data-guide="${guideAttr}">
           <span class="tl-drag" title="ドラッグして並び替え">⠿</span>
           ${body}
           <div class="tl-controls">
@@ -1119,6 +1141,108 @@ function resolveChordDiagram(item) {
     substituteName: buildChordName(item.root, subKey),
     hasVariants: false,
   };
+}
+
+/* ============================================================
+   生体力学的分析: コードチェンジ時の運指(Pivot Finger / Guide Finger)判定
+   frets配列(6弦→1弦, "x"|0|数値)だけを見て、どの弦をどの指で押さえているかを
+   単純化したモデルで推定し、連続する2つのコード間で
+   ・共通指(Pivot): 同じ弦の同じフレットをそのまま押さえ続けられる指
+   ・ガイドフィンガー(Guide): 同じ弦のまま、フレット位置だけスライド移動できる指
+   を判定する。
+   ============================================================ */
+
+/**
+ * frets配列から、各弦を1(人差し指)〜4(小指)のどの指で押さえているかを推定する。
+ * バレーがあれば人差し指がバレー全体を担当し、残りの押さえる位置はフレットの低い順に
+ * 中指→薬指→小指を割り当てる、という一般的な運指の傾向を単純化したモデル。
+ * 開放弦・ミュート弦は null(指を使わない)。
+ */
+function estimateFingering(frets) {
+  const fingers = frets.map(() => null);
+  const baseFret = computeBaseFret(frets);
+
+  // バレー検出(diagram.jsのバレー判定と同じ考え方)
+  let barre = null;
+  const nonMutedIdx = [];
+  frets.forEach((f, i) => {
+    if (f !== "x") nonMutedIdx.push(i);
+  });
+  if (nonMutedIdx.length >= 2 && baseFret > 0) {
+    const first = nonMutedIdx[0];
+    const last = nonMutedIdx[nonMutedIdx.length - 1];
+    if (frets[first] === baseFret && frets[last] === baseFret && last - first >= 2) {
+      barre = { from: first, to: last, fret: baseFret };
+    }
+  }
+
+  if (barre) {
+    for (let i = barre.from; i <= barre.to; i++) {
+      if (frets[i] === barre.fret) fingers[i] = 1;
+    }
+  }
+
+  const remaining = [];
+  frets.forEach((f, i) => {
+    if (typeof f !== "number" || f <= 0) return;
+    if (fingers[i] !== null) return; // バレーで担当済み
+    remaining.push({ stringIndex: i, fret: f });
+  });
+  remaining.sort((a, b) => a.fret - b.fret);
+
+  let nextFinger = barre ? 2 : 1;
+  remaining.forEach(({ stringIndex }) => {
+    fingers[stringIndex] = Math.min(nextFinger, 4);
+    nextFinger++;
+  });
+
+  return fingers;
+}
+
+/**
+ * 共通指(Pivot Finger)を判定する: 2つのコード間で「同じ弦の同じフレット」を
+ * 押さえたままでいい指を抜き出す。例: CコードからAmコードへの移行での
+ * 2弦1フレット・4弦2フレットなど。
+ */
+function findPivotFingers(fretsA, fretsB) {
+  const fingersA = estimateFingering(fretsA);
+  const pivots = [];
+  for (let i = 0; i < 6; i++) {
+    const a = fretsA[i];
+    const b = fretsB[i];
+    if (typeof a === "number" && a > 0 && a === b) {
+      pivots.push({ stringIndex: i, fret: a, finger: fingersA[i] });
+    }
+  }
+  return pivots;
+}
+
+/**
+ * ガイドフィンガー(Guide Finger)を判定する: 2つのコード間で「同じ弦のまま」
+ * フレット位置だけがスライド移動する指を抜き出す。例: DコードからAコードへの
+ * 移行での2弦(3フレット→2フレット)や、パワーコードのスライドなど。
+ */
+function findGuideFingers(fretsA, fretsB) {
+  const fingersA = estimateFingering(fretsA);
+  const guides = [];
+  for (let i = 0; i < 6; i++) {
+    const a = fretsA[i];
+    const b = fretsB[i];
+    if (typeof a === "number" && a > 0 && typeof b === "number" && b > 0 && a !== b) {
+      guides.push({ stringIndex: i, fromFret: a, toFret: b, finger: fingersA[i] });
+    }
+  }
+  return guides;
+}
+
+// state.timeline上で、あるインデックスより後にある「次に弾くコード」(root持ちのsegment)を探す。
+// 歌詞のみの行や改行は運指に関係しないのでスキップする。
+function getNextChordItem(fromIndex) {
+  for (let i = fromIndex + 1; i < state.timeline.length; i++) {
+    const candidate = state.timeline[i];
+    if (candidate.type === "segment" && candidate.root) return candidate;
+  }
+  return null;
 }
 
 /* ============================================================
