@@ -143,6 +143,25 @@ F      C
   </div>
 </div>
 
+<!-- 自作カスタムダイアグラム編集モーダル -->
+<div id="customDiagramModal" class="modal hidden">
+  <div class="modal-overlay" id="customDiagramOverlay"></div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>押さえ方を自分で登録</h2>
+      <button id="closeCustomDiagramBtn" class="close-btn" aria-label="閉じる">×</button>
+    </div>
+    <p class="import-hint">
+      「<span id="customDiagramChordName"></span>」の押さえ方をタップして指定してください(各弦ごとに ×/○/1〜5フレット から1つ選べます)。
+    </p>
+    <div id="customDiagramGrid" class="custom-diagram-grid"></div>
+    <div class="custom-diagram-actions">
+      <button id="resetCustomDiagramBtn" class="btn btn-ghost">リセット</button>
+      <button id="saveCustomDiagramBtn" class="btn btn-accent btn-wide">保存</button>
+    </div>
+  </div>
+</div>
+
 <div id="chordPopup" class="chord-popup hidden">
   <div class="chord-popup-name" id="chordPopupName"></div>
   <div class="variant-switcher">

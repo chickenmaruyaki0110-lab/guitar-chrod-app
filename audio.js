@@ -128,6 +128,25 @@ function playChordStrum(root, qualityKey, tensions, altered5) {
   });
 }
 
+// 実際のギターの開放弦の音高(6弦E2→1弦E4)。ユーザーが自作したフレット位置から、
+// 理論値ではなく「指定した通りの実音」を鳴らすための専用の音源。
+const GUITAR_OPEN_STRING_FREQS = [82.41, 110.0, 146.83, 196.0, 246.94, 329.63];
+
+/**
+ * frets: ["x"|number, ...] 長さ6 (6弦→1弦)。自作カスタムダイアグラムの押さえ方をそのまま再生する。
+ */
+function playCustomChordFrets(frets) {
+  const ctx = ensureAudioContext();
+  const now = ctx.currentTime;
+  let step = 0;
+  frets.forEach((fret, stringIndex) => {
+    if (fret === "x" || typeof fret !== "number") return;
+    const freq = GUITAR_OPEN_STRING_FREQS[stringIndex] * Math.pow(2, fret / 12);
+    pluckString(ctx, masterGain, freq, now + step * STRUM_STEP_SEC);
+    step++;
+  });
+}
+
 function setVolume(value) {
   currentVolume = Math.min(1, Math.max(0, value));
   if (masterGain && !muted) masterGain.gain.value = currentVolume;

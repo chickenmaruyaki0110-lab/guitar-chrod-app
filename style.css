@@ -525,6 +525,8 @@ body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
 
 .tl-thumb { width: 46px; height: 57px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .tl-thumb .chord-svg { width: 42px; height: 52px; }
+.tl-thumb-editable { cursor: pointer; border-radius: var(--radius-sm); outline: 1.5px dashed var(--border-soft); }
+.tl-thumb-editable:hover { outline-color: var(--accent); }
 
 .tl-chord-name {
   font-family: var(--font-mono);
@@ -540,6 +542,26 @@ body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
   font-size: 20px;
   margin: 4px 0;
 }
+
+/* 代用フォーム/自作フォームであることを示す小さな注記 */
+.tl-diagram-caption {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  text-align: center;
+  line-height: 1.3;
+}
+.tl-diagram-caption.custom { color: var(--accent); font-weight: 600; }
+
+.popup-edit-link {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  padding: 2px 4px;
+}
+.popup-edit-link:hover { filter: brightness(1.2); }
 
 .tl-lyric-text {
   font-size: 14.5px;
@@ -750,6 +772,37 @@ body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
 }
 .import-textarea::placeholder { color: var(--text-faint); }
 .import-textarea:focus { border-color: var(--accent); }
+
+/* ---------------- 自作カスタムダイアグラム編集 ---------------- */
+.custom-diagram-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.custom-diagram-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.custom-diagram-cell {
+  border: 1.5px solid var(--border-soft);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border-radius: 6px;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.custom-diagram-cell:hover { border-color: var(--accent); }
+.custom-diagram-cell.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.custom-diagram-actions { display: flex; gap: 8px; }
+.custom-diagram-actions .btn-wide { flex: 1; }
 
 /* ---------------- コード逆引き一覧 ---------------- */
 .chord-lookup-grid {

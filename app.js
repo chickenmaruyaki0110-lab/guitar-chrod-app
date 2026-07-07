@@ -5,6 +5,7 @@
 
 const STORAGE_KEY = "chordSheetApp.songs";
 const DRAFT_KEY = "chordSheetApp.draft";
+const CUSTOM_DIAGRAMS_KEY = "chordSheetApp.customDiagrams";
 
 const state = {
   root: "C",
@@ -79,6 +80,13 @@ const el = {
   enterViewModeBtn: document.getElementById("enterViewModeBtn"),
   builderPanel: document.querySelector(".builder-panel"),
   timelineHeaderToggle: document.querySelector(".timeline-header .view-toggle"),
+  customDiagramModal: document.getElementById("customDiagramModal"),
+  customDiagramOverlay: document.getElementById("customDiagramOverlay"),
+  closeCustomDiagramBtn: document.getElementById("closeCustomDiagramBtn"),
+  customDiagramChordName: document.getElementById("customDiagramChordName"),
+  customDiagramGrid: document.getElementById("customDiagramGrid"),
+  resetCustomDiagramBtn: document.getElementById("resetCustomDiagramBtn"),
+  saveCustomDiagramBtn: document.getElementById("saveCustomDiagramBtn"),
 };
 
 /* ---------- ユーティリティ ---------- */
@@ -277,8 +285,19 @@ function renderTimelineEdit() {
             <div class="tl-chord-name">${escapeHtml(item.name)}</div>
           `;
         } else {
-          // 辞書にない特殊なコード: ダイアグラムは省略し、コード名だけを大きく表示する
-          chordPart = `<div class="tl-chord-name tl-chord-name-lg" title="未対応のコード品質のためダイアグラムは省略しています">${escapeHtml(item.name)}</div>`;
+          // 辞書にない特殊なコード: 自作ダイアグラムがあればそれを、無ければ近い品質のフォームを代用として表示する
+          const diag = resolveChordDiagram(item);
+          const caption = diag.isCustom
+            ? `<div class="tl-diagram-caption custom">自作フォーム</div>`
+            : `<div class="tl-diagram-caption">(代用: ${escapeHtml(diag.substituteName)} フォーム)</div>`;
+          chordPart = `
+            <div class="tl-thumb tl-thumb-editable" data-id="${item.id}" title="タップしてこのコードの押さえ方を編集">${renderChordSvg(
+              diag.frets,
+              { compact: true, root: item.root, bass: item.bass }
+            )}</div>
+            <div class="tl-chord-name tl-chord-name-lg">${escapeHtml(item.name)}</div>
+            ${caption}
+          `;
         }
 
         body = `
@@ -357,7 +376,7 @@ el.timelineEdit.addEventListener("click", (e) => {
   const btn = e.target.closest(".tl-btn");
   if (!btn) {
     const chordPart = e.target.closest(".tl-thumb, .tl-chord-name");
-    if (chordPart) toggleChordPopup(e.target.closest(".tl-item"));
+    if (chordPart) handleChordBlockClick(e.target.closest(".tl-item"));
     return;
   }
   const itemEl = e.target.closest(".tl-item");
@@ -437,8 +456,24 @@ el.timelineEdit.addEventListener("drop", (e) => {
 el.timelinePreview.addEventListener("click", (e) => {
   const chip = e.target.closest(".pv-chord");
   if (!chip) return;
-  toggleChordPopup(chip);
+  handleChordBlockClick(chip);
 });
+
+// コードブロックをクリックしたときの振り分け:
+// - qualityKeyが判明していれば通常のポップアップ(押さえ方の拡大表示+再生)
+// - 未定義品質でも自作ダイアグラムが既にあればポップアップ(再生も自作の音)
+// - 未定義品質かつ自作ダイアグラムがまだ無ければ、作成モーダルを直接開く
+function handleChordBlockClick(anchorEl) {
+  const id = anchorEl.dataset.id;
+  const item = state.timeline.find((i) => i.id === id);
+  if (!item || !item.root) return;
+
+  if (!item.qualityKey && !getCustomDiagram(item.name)) {
+    openCustomDiagramModal(item);
+    return;
+  }
+  toggleChordPopup(anchorEl);
+}
 
 /* ============================================================
    コード選択→瞬時プレビュー（ポップアップ）
@@ -452,6 +487,9 @@ function toggleChordPopup(anchorEl) {
 
   if (item.qualityKey) {
     playChordStrum(item.root, item.qualityKey, item.tensions, item.altered5);
+  } else {
+    const custom = getCustomDiagram(item.name);
+    if (custom) playCustomChordFrets(custom);
   }
 
   if (activeChordPopupId === id) {
@@ -466,10 +504,13 @@ function refreshChordPopupContent(item) {
   el.chordPopupName.textContent = item.name;
 
   if (!item.qualityKey) {
-    // 辞書にない特殊なコード: ダイアグラムは空欄にし、コード名だけ大きく見せる
-    el.chordPopupDiagram.innerHTML = "";
-    el.chordPopupDiagram.classList.add("empty");
-    el.popupVariantLabel.textContent = "";
+    // 辞書にない特殊なコード: 自作ダイアグラムか、無ければ代用フォームを表示する
+    const diag = resolveChordDiagram(item);
+    el.chordPopupDiagram.innerHTML = renderChordSvg(diag.frets, { compact: false, root: item.root, bass: item.bass });
+    el.chordPopupDiagram.classList.remove("empty");
+    el.popupVariantLabel.innerHTML = diag.isCustom
+      ? `自作フォーム <button type="button" id="editCustomDiagramFromPopupBtn" class="popup-edit-link">✏️ 編集</button>`
+      : `(代用: ${escapeHtml(diag.substituteName)} フォーム) <button type="button" id="editCustomDiagramFromPopupBtn" class="popup-edit-link">✏️ 自分で登録する</button>`;
     el.popupVariantPrevBtn.disabled = true;
     el.popupVariantNextBtn.disabled = true;
     return;
@@ -486,6 +527,15 @@ function refreshChordPopupContent(item) {
   el.popupVariantPrevBtn.disabled = variants.length <= 1;
   el.popupVariantNextBtn.disabled = variants.length <= 1;
 }
+
+// ポップアップ内の「編集」リンクは動的に生成されるので、イベント委任で拾う
+el.popupVariantLabel.addEventListener("click", (e) => {
+  if (!e.target.closest("#editCustomDiagramFromPopupBtn")) return;
+  const item = state.timeline.find((i) => i.id === activeChordPopupId);
+  if (!item) return;
+  hideChordPopup();
+  openCustomDiagramModal(item);
+});
 
 function showChordPopup(item, anchorEl) {
   refreshChordPopupContent(item);
@@ -702,7 +752,11 @@ function parseChordToken(rawToken) {
   const leftover = normalized.slice(match[0].length);
   const qualityKey = leftover ? null : QUALITY_ALIASES[qualityRaw || ""] || "maj";
 
-  return { root, qualityKey, name: rawToken, bass, altered5, tensions };
+  // qualityKeyが確定できない場合でも、正規表現がそこまでに読み取れた品質(qualityRaw)があれば
+  // それを近い代用フォームとして使う(例: "Daug7b9" → 品質部分は "aug7" まで読めているので aug で代用)。
+  const substituteQualityKey = qualityKey || QUALITY_ALIASES[qualityRaw || ""] || "maj";
+
+  return { root, qualityKey, name: rawToken, bass, altered5, tensions, substituteQualityKey };
 }
 
 // 全角文字(ひらがな・カタカナ・漢字・全角記号など)は半角の2倍の表示幅として数える。
@@ -750,10 +804,16 @@ function extractTokensWithPositions(line) {
   return tokens;
 }
 
+// 英字・数字・#・b・/・+・-・空白だけで構成された行は、個々のトークンの判定にかかわらず
+// 無条件で「コード行」として扱う。"N.C." や "-"(休符/継続記号)のような、コードではない
+// フィラーが混ざっていても、行全体が歌詞として誤認されないようにするための緩い判定。
+const CHORD_LINE_CHARSET_REGEX = /^[A-Za-z0-9#/+\-.\s]+$/;
+
 // 行のトークンがすべてコード表記なら位置情報付きで返す。歌詞行なら null
 function extractChordLine(line) {
   const tokens = extractTokensWithPositions(line);
   if (tokens.length === 0) return null;
+  if (CHORD_LINE_CHARSET_REGEX.test(line)) return tokens;
   return tokens.every((t) => isChordToken(t.text)) ? tokens : null;
 }
 
@@ -768,6 +828,7 @@ function makeChordSegment(token, lyricText) {
     bass: parsed.bass || null,
     altered5: parsed.altered5 || null,
     tensions: parsed.tensions || [],
+    substituteQualityKey: parsed.substituteQualityKey || "maj",
     lyricText: (lyricText || "").trim(),
     variantIndex: 0,
   };
@@ -813,15 +874,26 @@ function parseImportText(text) {
           const endIdx =
             idx + 1 < chordLine.length ? charIndexAtColumn(nextLine, chordLine[idx + 1].column) : nextLine.length;
           const lyricSlice = nextLine.slice(startIdx, endIdx);
-          // 区切り文字なしで連結してしまったコード(例: "CmM7/GGM7(9)")も分解してから追加する
-          splitConcatenatedChordTokens(tok.text).forEach((subTok, subIdx) => {
+          // 区切り文字なしで連結してしまったコード(例: "CmM7/GGM7(9)")も分解してから追加する。
+          // "N.C." や "-" のようにコードとして解釈できないフィラーは歌詞なしブロックとして残す。
+          const subTokens = splitConcatenatedChordTokens(tok.text);
+          if (!subTokens) {
+            items.push(makeLyricOnlySegment(tok.text));
+            return;
+          }
+          subTokens.forEach((subTok, subIdx) => {
             items.push(makeChordSegment(subTok, subIdx === 0 ? lyricSlice : ""));
           });
         });
         i += 2;
       } else {
         chordLine.forEach((tok) => {
-          splitConcatenatedChordTokens(tok.text).forEach((subTok) => items.push(makeChordSegment(subTok, "")));
+          const subTokens = splitConcatenatedChordTokens(tok.text);
+          if (!subTokens) {
+            items.push(makeLyricOnlySegment(tok.text));
+            return;
+          }
+          subTokens.forEach((subTok) => items.push(makeChordSegment(subTok, "")));
         });
         i += 1;
       }
@@ -889,12 +961,16 @@ function getUniqueTimelineChords() {
 
 function renderChordLookupCard(item) {
   if (!item.qualityKey) {
-    // 辞書にない特殊なコード: 名前だけを大きく表示する
+    // 辞書にない特殊なコード: 自作ダイアグラムか、無ければ代用フォームを表示する。タップで編集可能。
+    const diag = resolveChordDiagram(item);
+    const diagramSvg = renderChordSvg(diag.frets, { compact: true, root: item.root, bass: item.bass });
+    const caption = diag.isCustom ? "自作フォーム" : `(代用: ${escapeHtml(diag.substituteName)} フォーム)`;
     return `
       <div class="chord-lookup-card">
-        <div class="chord-lookup-name" style="font-size:18px;">${escapeHtml(item.name)}</div>
+        <div class="chord-lookup-name">${escapeHtml(item.name)}</div>
         <div class="chord-lookup-root">ルート: <b>${escapeHtml(item.root)}</b></div>
-        <div class="chord-lookup-unsupported">構成音・ダイアグラム未対応</div>
+        <div class="chord-lookup-diagram chord-lookup-diagram-editable" data-id="${item.id}" title="タップして押さえ方を編集">${diagramSvg}</div>
+        <div class="tl-diagram-caption${diag.isCustom ? " custom" : ""}">${caption}</div>
       </div>
     `;
   }
@@ -939,6 +1015,14 @@ el.openChordLookupBtn.addEventListener("click", openChordLookupModal);
 el.closeChordLookupBtn.addEventListener("click", closeChordLookupModal);
 el.chordLookupOverlay.addEventListener("click", closeChordLookupModal);
 
+// 逆引き一覧で未定義コードのダイアグラムをタップしたら、押さえ方の登録/編集モーダルを開く
+el.chordLookupGrid.addEventListener("click", (e) => {
+  const diagramEl = e.target.closest(".chord-lookup-diagram-editable");
+  if (!diagramEl) return;
+  const item = state.timeline.find((i) => i.id === diagramEl.dataset.id);
+  if (item) openCustomDiagramModal(item);
+});
+
 /* ============================================================
    楽譜の保存 / 読込 / 削除 (LocalStorage)
    ============================================================ */
@@ -981,6 +1065,126 @@ function loadDraft() {
 function clearDraft() {
   localStorage.removeItem(DRAFT_KEY);
 }
+
+/* ============================================================
+   自作カスタムダイアグラム (LocalStorage、コード名をキーに保存)
+   ============================================================ */
+function loadCustomDiagrams() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_DIAGRAMS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    console.error("カスタムダイアグラムの読み込みに失敗しました", err);
+    return {};
+  }
+}
+
+function saveCustomDiagram(name, frets) {
+  if (!name) return;
+  const all = loadCustomDiagrams();
+  all[name] = frets.slice();
+  localStorage.setItem(CUSTOM_DIAGRAMS_KEY, JSON.stringify(all));
+}
+
+function getCustomDiagram(name) {
+  if (!name) return null;
+  return loadCustomDiagrams()[name] || null;
+}
+
+/**
+ * コードのダイアグラムを解決する。優先順位:
+ * 1) qualityKeyが判明していれば通常のフォーム一覧から選ぶ(既存ロジック)
+ * 2) ユーザーが保存したカスタムダイアグラムがあればそれを使う
+ * 3) どちらも無ければ、近い品質のフォームを「代用」として使う
+ */
+function resolveChordDiagram(item) {
+  if (item.qualityKey) {
+    const variants = getItemVariants(item);
+    const idx = clampVariantIndex(item.variantIndex || 0, variants.length);
+    return { frets: variants[idx].frets, isCustom: false, isSubstitute: false, hasVariants: variants.length > 1 };
+  }
+
+  const custom = getCustomDiagram(item.name);
+  if (custom) {
+    return { frets: custom, isCustom: true, isSubstitute: false, hasVariants: false };
+  }
+
+  const subKey = item.substituteQualityKey || "maj";
+  const variants = getChordFretVariants(item.root, subKey);
+  const idx = clampVariantIndex(item.variantIndex || 0, variants.length);
+  return {
+    frets: variants[idx].frets,
+    isCustom: false,
+    isSubstitute: true,
+    substituteName: buildChordName(item.root, subKey),
+    hasVariants: false,
+  };
+}
+
+/* ============================================================
+   自作カスタムダイアグラム編集モーダル
+   6弦×5フレットの簡易指板をタップして、各弦を ×(ミュート)/○(開放)/1〜5フレット から選ぶ
+   ============================================================ */
+const CUSTOM_DIAGRAM_ROWS = [
+  { value: "x", label: "×" },
+  { value: 0, label: "○" },
+  { value: 1, label: "1" },
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 4, label: "4" },
+  { value: 5, label: "5" },
+];
+
+let customDiagramTargetName = null;
+let customDiagramDraft = ["x", "x", "x", "x", "x", "x"];
+
+function renderCustomDiagramGrid() {
+  el.customDiagramGrid.innerHTML = customDiagramDraft
+    .map((currentValue, stringIdx) => {
+      const cells = CUSTOM_DIAGRAM_ROWS.map((row) => {
+        const active = currentValue === row.value;
+        return `<button type="button" class="custom-diagram-cell${active ? " active" : ""}" data-string="${stringIdx}" data-value="${row.value}">${row.label}</button>`;
+      }).join("");
+      return `<div class="custom-diagram-col">${cells}</div>`;
+    })
+    .join("");
+}
+
+el.customDiagramGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest(".custom-diagram-cell");
+  if (!btn) return;
+  const stringIdx = Number(btn.dataset.string);
+  customDiagramDraft[stringIdx] = btn.dataset.value === "x" ? "x" : Number(btn.dataset.value);
+  renderCustomDiagramGrid();
+});
+
+function openCustomDiagramModal(item) {
+  customDiagramTargetName = item.name;
+  const existing = getCustomDiagram(item.name);
+  customDiagramDraft = existing ? existing.slice() : ["x", "x", "x", "x", "x", "x"];
+  el.customDiagramChordName.textContent = item.name;
+  renderCustomDiagramGrid();
+  el.customDiagramModal.classList.remove("hidden");
+}
+
+function closeCustomDiagramModal() {
+  el.customDiagramModal.classList.add("hidden");
+}
+
+el.closeCustomDiagramBtn.addEventListener("click", closeCustomDiagramModal);
+el.customDiagramOverlay.addEventListener("click", closeCustomDiagramModal);
+
+el.resetCustomDiagramBtn.addEventListener("click", () => {
+  customDiagramDraft = ["x", "x", "x", "x", "x", "x"];
+  renderCustomDiagramGrid();
+});
+
+el.saveCustomDiagramBtn.addEventListener("click", () => {
+  saveCustomDiagram(customDiagramTargetName, customDiagramDraft);
+  closeCustomDiagramModal();
+  renderTimeline();
+  showToast("カスタムダイアグラムを保存しました");
+});
 
 function saveCurrentSong() {
   const title = el.songTitleInput.value.trim();
@@ -1145,6 +1349,7 @@ document.addEventListener("keydown", (e) => {
     closeSongDrawer();
     closeImportModal();
     closeChordLookupModal();
+    closeCustomDiagramModal();
     closeHeaderMenu();
     hideChordPopup();
   }
