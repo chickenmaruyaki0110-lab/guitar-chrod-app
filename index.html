@@ -90,11 +90,95 @@
       <div class="view-toggle" role="tablist">
         <button id="editModeBtn" class="toggle-btn active" role="tab">編集</button>
         <button id="previewModeBtn" class="toggle-btn" role="tab">プレビュー</button>
+        <button id="practiceModeBtn" class="toggle-btn" role="tab">練習</button>
       </div>
     </div>
 
     <div id="timelineEdit" class="timeline-edit"></div>
     <div id="timelinePreview" class="timeline-preview hidden"></div>
+
+    <!-- ギター練習ドリル画面: 既存の編集/プレビューとは完全に独立したUI -->
+    <section id="practice-drill-section" class="practice-drill-section hidden" aria-label="ギター練習ドリル">
+
+      <div class="practice-block">
+        <div class="practice-block-header">
+          <h3 class="practice-block-title">① 現在の課題コードチェンジ</h3>
+          <div class="practice-source-toggle">
+            <button type="button" id="practiceSourceAutoBtn" class="toggle-btn active">自動抽出</button>
+            <button type="button" id="practiceSourceManualBtn" class="toggle-btn">手動で選ぶ</button>
+          </div>
+        </div>
+
+        <div class="practice-auto-nav" id="practiceAutoNav">
+          <button type="button" id="practicePairPrevBtn" class="variant-arrow-btn" title="前のコードチェンジ">◀</button>
+          <span id="practicePairPosition" class="practice-pair-position"></span>
+          <button type="button" id="practicePairNextBtn" class="variant-arrow-btn" title="次のコードチェンジ">▶</button>
+        </div>
+
+        <div class="practice-manual-dials hidden" id="practiceManualDials">
+          <select id="practiceChordASelect" class="practice-select"></select>
+          <span class="practice-swap-icon">↔</span>
+          <select id="practiceChordBSelect" class="practice-select"></select>
+        </div>
+
+        <div class="practice-chord-pair">
+          <div class="practice-chord-slot">
+            <div class="practice-chord-name" id="practiceChordAName">—</div>
+            <div class="practice-chord-diagram" id="practiceChordADiagram"></div>
+          </div>
+          <div class="practice-swap-icon practice-swap-icon-lg">↔</div>
+          <div class="practice-chord-slot">
+            <div class="practice-chord-name" id="practiceChordBName">—</div>
+            <div class="practice-chord-diagram" id="practiceChordBDiagram"></div>
+          </div>
+        </div>
+
+        <div class="practice-fingering-legend">
+          <span class="practice-legend-item"><span class="practice-legend-dot pivot"></span>共通指(Pivot)</span>
+          <span class="practice-legend-item"><span class="practice-legend-dot guide"></span>ガイドフィンガー(Guide)の移動方向</span>
+        </div>
+      </div>
+
+      <div class="practice-block">
+        <h3 class="practice-block-title">② 1分間コードチェンジ・カウンター</h3>
+        <div class="practice-counter-controls">
+          <label class="practice-bpm-label">BPM
+            <input type="number" id="practiceBpmInput" class="practice-bpm-input" value="60" min="30" max="240" />
+          </label>
+          <button type="button" id="practiceStartBtn" class="btn btn-accent">▶ 開始</button>
+          <button type="button" id="practiceStopBtn" class="btn btn-ghost" disabled>■ 停止</button>
+        </div>
+
+        <div class="practice-counter-display">
+          <div class="practice-timer" id="practiceTimer">1:00</div>
+          <button type="button" id="practiceTapBtn" class="practice-tap-btn" disabled>
+            <span id="practiceCount">0</span>
+            <span class="practice-count-unit">回チェンジ<br />(タップして記録)</span>
+          </button>
+        </div>
+
+        <div class="practice-history" id="practiceHistory"></div>
+      </div>
+
+      <div class="practice-block">
+        <h3 class="practice-block-title">③ Root-First（ルート先行）アルペジオ再生</h3>
+        <label class="practice-toggle-row">
+          <input type="checkbox" id="rootFirstToggle" class="practice-toggle-input" />
+          <span class="practice-toggle-track"><span class="practice-toggle-thumb"></span></span>
+          <span class="practice-toggle-label">ONにすると、上のコードダイアグラムをタップした時にルート音をジャストで先に鳴らし、残りの弦を時間差で鳴らします</span>
+        </label>
+      </div>
+
+      <div class="practice-block">
+        <h3 class="practice-block-title">④ 参考動画</h3>
+        <div class="practice-video-input-row">
+          <input type="text" id="practiceVideoUrlInput" class="practice-video-input" placeholder="YouTubeのURLを貼り付け…" />
+          <button type="button" id="practiceVideoLoadBtn" class="btn btn-secondary">読み込む</button>
+        </div>
+        <div class="practice-video-embed" id="practiceVideoEmbed"></div>
+      </div>
+
+    </section>
   </section>
 
 </main>

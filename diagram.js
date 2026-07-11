@@ -15,11 +15,18 @@ const OPEN_STRING_SEMITONES = [4, 9, 2, 7, 11, 4]; // E, A, D, G, B, E
  *               ルート音の丸だけ色を変えて強調する(音楽理論の学習用)
  * options.bass: オンコード(分数コード、例: CM7/G)のベース音名。この音を鳴らしている中で最も低い
  *               弦(開放弦も含む)を「ベース音」として強調表示する(押さえ方自体は変えない)
+ * options.pivotStrings: [弦インデックス, ...]。指定した弦の丸をライトグリーンで光らせる
+ *               (練習ドリル画面での「共通指(Pivot Finger)」表示用。通常表示では未使用)
+ * options.guideMoves: [{stringIndex, fromFret, toFret}, ...]。同じ弦の上でフレットが
+ *               スライド移動する様子を、オレンジの破線矢印として指板上に描画する
+ *               (練習ドリル画面での「ガイドフィンガー(Guide Finger)」表示用)
  */
 function renderChordSvg(frets, options = {}) {
   const compact = !!options.compact;
   const rootSemitone = options.root ? ROOT_NOTES.indexOf(options.root) : -1;
   const bassSemitone = options.bass ? ROOT_NOTES.indexOf(options.bass) : -1;
+  const pivotStrings = options.pivotStrings || [];
+  const guideMoves = options.guideMoves || [];
 
   // 指定の弦・フレットの音が、ルートから見て何度にあたるかを求める
   function degreeInfo(stringIndex, fret) {
@@ -136,10 +143,28 @@ function renderChordSvg(frets, options = {}) {
     const degree = degreeInfo(i, f);
     let dotClass = degree && degree.isRoot ? "finger-dot root" : "finger-dot";
     if (i === bassStringIndex) dotClass += " bass-note";
+    if (pivotStrings.includes(i)) dotClass += " pivot";
     svg += `<circle cx="${x}" cy="${y}" r="${r}" class="${dotClass}" />`;
     if (degree) {
       svg += `<text x="${x}" y="${y}" class="degree-label" text-anchor="middle" dominant-baseline="central">${degree.label}</text>`;
     }
+  });
+
+  // ガイドフィンガー: 同じ弦の上でフレットがスライド移動する方向を破線矢印で示す
+  // (表示範囲(baseFret〜baseFret+DIAGRAM_ROWS-1)に収まらない移動は描画をスキップする)
+  guideMoves.forEach((move) => {
+    const fromRow = move.fromFret - baseFret;
+    const toRow = move.toFret - baseFret;
+    if (fromRow < 0 || fromRow > DIAGRAM_ROWS - 1 || toRow < 0 || toRow > DIAGRAM_ROWS - 1) return;
+    const x = stringX(move.stringIndex);
+    const y1 = rowY(fromRow) + rowGap / 2;
+    const y2 = rowY(toRow) + rowGap / 2;
+    if (y1 === y2) return;
+    const dir = y2 > y1 ? 1 : -1;
+    const arrowSize = compact ? 3 : 5;
+    const lineEndY = y2 - dir * arrowSize * 2;
+    svg += `<line x1="${x}" y1="${y1}" x2="${x}" y2="${lineEndY}" class="guide-arrow" />`;
+    svg += `<polygon points="${x - arrowSize},${lineEndY} ${x + arrowSize},${lineEndY} ${x},${y2}" class="guide-arrowhead" />`;
   });
 
   svg += `</svg>`;

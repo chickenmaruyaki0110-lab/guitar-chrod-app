@@ -398,6 +398,11 @@ body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
 .chord-svg .finger-dot { fill: var(--accent); }
 .chord-svg .finger-dot.root { fill: var(--danger); }
 .chord-svg .finger-dot.bass-note { stroke: #ffffff; stroke-width: 1.6; }
+
+/* 練習ドリル画面: 共通指(Pivot)/ガイドフィンガー(Guide)の動的運指アシスト表示 */
+.chord-svg .finger-dot.pivot { fill: #00FF7F; }
+.chord-svg .guide-arrow { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 3 3; fill: none; }
+.chord-svg .guide-arrowhead { fill: var(--accent); }
 .chord-svg .barre-bar { stroke: var(--accent); opacity: 0.95; }
 .chord-svg .mute-mark { fill: var(--danger); font-size: 13px; font-weight: 700; }
 .chord-svg .open-mark { fill: var(--text); font-size: 12px; font-weight: 700; }
@@ -845,6 +850,7 @@ body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
 .chord-lookup-root b { color: var(--danger); font-weight: 700; }
 
 .chord-lookup-diagram .chord-svg { width: 66px; height: 82px; }
+.chord-lookup-diagram-editable, .chord-lookup-diagram-playable { cursor: pointer; }
 
 .chord-lookup-tones {
   display: flex;
@@ -955,6 +961,246 @@ body.app-view-mode .workspace { grid-template-columns: 1fr; max-width: 760px; }
 .preview-diagram, .chord-popup-diagram { cursor: pointer; }
 
 /* ============================================================
+   ギター練習ドリル画面 (#practice-drill-section)
+   既存の編集/プレビュー画面とは完全に独立したセクション。
+   ============================================================ */
+body.practice-active .workspace { grid-template-columns: 1fr; }
+body.practice-active .builder-panel { display: none; }
+
+.practice-drill-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.practice-block {
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+
+.practice-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.practice-block-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.practice-source-toggle {
+  display: flex;
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 2px;
+}
+.practice-source-toggle .toggle-btn { padding: 6px 12px; font-size: 12px; }
+
+.practice-auto-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.practice-pair-position { font-size: 12px; color: var(--text-soft); min-width: 60px; text-align: center; }
+
+.practice-manual-dials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.practice-select {
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.practice-swap-icon { font-size: 16px; color: var(--text-soft); }
+.practice-swap-icon-lg { font-size: 26px; color: var(--accent); font-weight: 700; }
+
+.practice-chord-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.practice-chord-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.practice-chord-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.practice-chord-diagram .chord-svg { width: 120px; height: 148px; }
+
+.practice-fingering-legend {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin-top: 18px;
+  font-size: 11.5px;
+  color: var(--text-soft);
+  flex-wrap: wrap;
+}
+.practice-legend-item { display: flex; align-items: center; gap: 6px; }
+.practice-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #00FF7F; }
+.practice-legend-dot.guide { background: transparent; border: 2px dashed var(--accent); width: 8px; height: 8px; }
+
+/* ② 1分間コードチェンジ・カウンター */
+.practice-counter-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.practice-bpm-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-soft); }
+
+.practice-bpm-input {
+  width: 64px;
+  background: var(--surface-3);
+  border: 1.5px solid var(--border-soft);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
+  font-family: var(--font-mono);
+}
+
+.practice-counter-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.practice-timer {
+  font-family: var(--font-mono);
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.practice-tap-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.practice-tap-btn:disabled { background: var(--surface-3); color: var(--text-faint); }
+.practice-tap-btn:hover:not(:disabled) { filter: brightness(1.08); }
+#practiceCount { font-family: var(--font-mono); font-size: 34px; font-weight: 700; }
+.practice-count-unit { font-size: 10.5px; line-height: 1.3; text-align: center; }
+
+.practice-history { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.practice-history-empty { color: var(--text-faint); font-size: 12.5px; text-align: center; padding: 12px; }
+
+.practice-history-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-soft); }
+.practice-history-date { width: 90px; flex-shrink: 0; }
+.practice-history-bar-track { flex: 1; background: var(--surface-3); border-radius: 4px; height: 10px; overflow: hidden; }
+.practice-history-bar { height: 100%; background: var(--accent); border-radius: 4px; }
+.practice-history-count { font-family: var(--font-mono); color: var(--text); width: 44px; text-align: right; flex-shrink: 0; }
+
+/* ③ Root-Firstトグルスイッチ */
+.practice-toggle-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.practice-toggle-input { position: absolute; opacity: 0; width: 0; height: 0; }
+.practice-toggle-track {
+  width: 44px;
+  height: 24px;
+  background: var(--surface-3);
+  border-radius: 999px;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.practice-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--text);
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+.practice-toggle-input:checked + .practice-toggle-track { background: var(--accent); }
+.practice-toggle-input:checked + .practice-toggle-track .practice-toggle-thumb {
+  transform: translateX(20px);
+  background: var(--accent-ink);
+}
+.practice-toggle-label { font-size: 13px; color: var(--text-soft); }
+
+/* ④ 参考動画埋め込み */
+.practice-video-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.practice-video-input {
+  flex: 1;
+  background: var(--surface-3);
+  border: 1.5px solid var(--border-soft);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 13.5px;
+}
+.practice-video-input::placeholder { color: var(--text-faint); }
+
+.practice-video-embed {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background: var(--surface-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.practice-video-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+.practice-video-embed-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 12.5px;
+  text-align: center;
+  padding: 0 20px;
+}
+
+/* ============================================================
    レスポンシブ対応（スマホ縦画面向け）
    ============================================================ */
 html, body { overflow-x: hidden; }
@@ -1003,6 +1249,14 @@ html, body { overflow-x: hidden; }
   .sound-control { right: 12px; bottom: 12px; padding: 6px 10px 6px 6px; gap: 6px; }
   .sound-btn { width: 30px; height: 30px; font-size: 16px; }
   .sound-control input[type="range"] { width: 64px; }
+
+  /* 練習ドリル画面 */
+  .practice-block { padding: 14px; }
+  .practice-chord-pair { gap: 14px; }
+  .practice-chord-diagram .chord-svg { width: 92px; height: 114px; }
+  .practice-chord-name { font-size: 18px; }
+  .practice-tap-btn { width: 110px; height: 110px; }
+  .practice-timer { font-size: 32px; }
 }
 
 @media (max-width: 420px) {

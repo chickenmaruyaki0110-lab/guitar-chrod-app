@@ -6,6 +6,7 @@
 const STORAGE_KEY = "chordSheetApp.songs";
 const DRAFT_KEY = "chordSheetApp.draft";
 const CUSTOM_DIAGRAMS_KEY = "chordSheetApp.customDiagrams";
+const PRACTICE_HISTORY_KEY = "chordSheetApp.practiceHistory";
 
 const state = {
   root: "C",
@@ -13,8 +14,23 @@ const state = {
   variantIndex: 0,    // ビルダーで選んでいる押さえ方のバリエーション(フォーム)の番号
   timeline: [],       // {id, type: 'segment'|'linebreak', root?, qualityKey?, name?, lyricText?, variantIndex?}
   currentSongId: null,
-  mode: "edit",       // 'edit' | 'preview'  (タイムライン内の 編集/プレビュー サブビュー)
+  mode: "edit",       // 'edit' | 'preview' | 'practice'  (タイムライン内の 編集/プレビュー/練習 サブビュー)
   appMode: "edit",    // 'edit' | 'view'     (画面全体: 編集画面 or 保存曲の閲覧画面)
+};
+
+// ギター練習ドリル画面専用の状態。既存のtimeline編集/保存ロジックとは独立して管理する。
+const practiceState = {
+  source: "auto",   // 'auto'(タイムラインから自動抽出) | 'manual'(手動ダイヤル)
+  pairIndex: 0,      // 自動抽出モードで、タイムライン中の何番目のコードを基点にしているか
+  manualA: { root: "C", qualityKey: "maj" },
+  manualB: { root: "A", qualityKey: "m" },
+  currentPair: null,   // renderPracticeChallengeが最後に描画したペアの{frets, roots} (再生用)
+  running: false,
+  intervalId: null,      // メトロノームクリック用のsetInterval ID
+  timerIntervalId: null, // 1秒ごとのカウントダウン表示用のsetInterval ID
+  beatCount: 0,
+  secondsLeft: 60,
+  count: 0,
 };
 
 // item.root/qualityKey から使えるフォーム一覧と、item.variantIndex が指す現在のフォームを取得する
@@ -87,6 +103,33 @@ const el = {
   customDiagramGrid: document.getElementById("customDiagramGrid"),
   resetCustomDiagramBtn: document.getElementById("resetCustomDiagramBtn"),
   saveCustomDiagramBtn: document.getElementById("saveCustomDiagramBtn"),
+  practiceModeBtn: document.getElementById("practiceModeBtn"),
+  practiceDrillSection: document.getElementById("practice-drill-section"),
+  practiceSourceAutoBtn: document.getElementById("practiceSourceAutoBtn"),
+  practiceSourceManualBtn: document.getElementById("practiceSourceManualBtn"),
+  practiceAutoNav: document.getElementById("practiceAutoNav"),
+  practicePairPrevBtn: document.getElementById("practicePairPrevBtn"),
+  practicePairNextBtn: document.getElementById("practicePairNextBtn"),
+  practicePairPosition: document.getElementById("practicePairPosition"),
+  practiceManualDials: document.getElementById("practiceManualDials"),
+  practiceChordASelect: document.getElementById("practiceChordASelect"),
+  practiceChordBSelect: document.getElementById("practiceChordBSelect"),
+  practiceChordAName: document.getElementById("practiceChordAName"),
+  practiceChordADiagram: document.getElementById("practiceChordADiagram"),
+  practiceChordBName: document.getElementById("practiceChordBName"),
+  practiceChordBDiagram: document.getElementById("practiceChordBDiagram"),
+  practiceChordPair: document.querySelector(".practice-chord-pair"),
+  practiceBpmInput: document.getElementById("practiceBpmInput"),
+  practiceStartBtn: document.getElementById("practiceStartBtn"),
+  practiceStopBtn: document.getElementById("practiceStopBtn"),
+  practiceTimer: document.getElementById("practiceTimer"),
+  practiceTapBtn: document.getElementById("practiceTapBtn"),
+  practiceCount: document.getElementById("practiceCount"),
+  practiceHistory: document.getElementById("practiceHistory"),
+  rootFirstToggle: document.getElementById("rootFirstToggle"),
+  practiceVideoUrlInput: document.getElementById("practiceVideoUrlInput"),
+  practiceVideoLoadBtn: document.getElementById("practiceVideoLoadBtn"),
+  practiceVideoEmbed: document.getElementById("practiceVideoEmbed"),
 };
 
 /* ---------- ユーティリティ ---------- */
@@ -196,9 +239,10 @@ el.variantNextBtn.addEventListener("click", () => {
   saveDraft();
 });
 
-// ビルダーのダイアグラムをクリックしたら、今選んでいるコードの音を鳴らす
+// ビルダーのダイアグラムをクリックしたら、今選んでいる「ポジション」のフレットで音を鳴らす
 el.previewDiagram.addEventListener("click", () => {
-  playChordStrum(state.root, state.qualityKey);
+  const variants = currentBuilderVariants();
+  playChordStrum(variants[state.variantIndex].frets);
 });
 
 // コード + 歌詞をセットでタイムラインに追加（U-FRET風の1ブロック）
@@ -250,6 +294,10 @@ function renderTimeline() {
   // 逆引き一覧を開いている間にタイムラインが変わったら、その場で最新の内容に更新する
   if (!el.chordLookupModal.classList.contains("hidden")) {
     renderChordLookup();
+  }
+  // 練習ドリル画面を表示中にタイムラインが変わったら、課題コードチェンジも最新の内容に更新する
+  if (state.mode === "practice") {
+    renderPracticeChallenge();
   }
 }
 
@@ -507,12 +555,8 @@ function toggleChordPopup(anchorEl) {
   const item = state.timeline.find((i) => i.id === id);
   if (!item || !item.root) return;
 
-  if (item.qualityKey) {
-    playChordStrum(item.root, item.qualityKey, item.tensions, item.altered5);
-  } else {
-    const custom = getCustomDiagram(item.name);
-    if (custom) playCustomChordFrets(custom);
-  }
+  // 現在画面に描画されている「そのポジション」のフレットで鳴らす(既知/自作/代用すべて同じ経路)
+  playChordStrum(resolveChordDiagram(item).frets);
 
   if (activeChordPopupId === id) {
     hideChordPopup();
@@ -609,8 +653,8 @@ function positionChordPopup(anchorEl) {
 // ポップアップ内の拡大ダイアグラムをクリックしても再生できるように
 el.chordPopupDiagram.addEventListener("click", () => {
   const item = state.timeline.find((i) => i.id === activeChordPopupId);
-  if (!item || !item.root || !item.qualityKey) return;
-  playChordStrum(item.root, item.qualityKey, item.tensions, item.altered5);
+  if (!item || !item.root) return;
+  playChordStrum(resolveChordDiagram(item).frets);
 });
 
 document.addEventListener("click", (e) => {
@@ -636,14 +680,20 @@ el.timelineEdit.addEventListener("blur", (e) => {
 // 編集/プレビュー 切り替え
 el.editModeBtn.addEventListener("click", () => switchMode("edit"));
 el.previewModeBtn.addEventListener("click", () => switchMode("preview"));
+el.practiceModeBtn.addEventListener("click", () => switchMode("practice"));
 
 function switchMode(mode) {
   hideChordPopup();
+  if (state.mode === "practice" && mode !== "practice") stopPracticeCounter();
   state.mode = mode;
   el.editModeBtn.classList.toggle("active", mode === "edit");
   el.previewModeBtn.classList.toggle("active", mode === "preview");
+  el.practiceModeBtn.classList.toggle("active", mode === "practice");
   el.timelineEdit.classList.toggle("hidden", mode !== "edit");
   el.timelinePreview.classList.toggle("hidden", mode !== "preview");
+  el.practiceDrillSection.classList.toggle("hidden", mode !== "practice");
+  document.body.classList.toggle("practice-active", mode === "practice");
+  if (mode === "practice") renderPracticeChallenge();
 }
 
 /* ============================================================
@@ -1009,7 +1059,7 @@ function renderChordLookupCard(item) {
     <div class="chord-lookup-card">
       <div class="chord-lookup-name">${escapeHtml(item.name)}</div>
       <div class="chord-lookup-root">ルート: <b>${escapeHtml(item.root)}</b>${item.bass ? ` / オンベース: <b>${escapeHtml(item.bass)}</b>` : ""}</div>
-      <div class="chord-lookup-diagram">${diagramSvg}</div>
+      <div class="chord-lookup-diagram chord-lookup-diagram-playable" data-id="${item.id}" title="タップして試聴">${diagramSvg}</div>
       <div class="chord-lookup-tones">${tonesHtml}</div>
     </div>
   `;
@@ -1037,12 +1087,20 @@ el.openChordLookupBtn.addEventListener("click", openChordLookupModal);
 el.closeChordLookupBtn.addEventListener("click", closeChordLookupModal);
 el.chordLookupOverlay.addEventListener("click", closeChordLookupModal);
 
-// 逆引き一覧で未定義コードのダイアグラムをタップしたら、押さえ方の登録/編集モーダルを開く
+// 逆引き一覧: 未定義コードのダイアグラムをタップしたら押さえ方の登録/編集モーダルを開き、
+// 既知のコードのダイアグラムをタップしたら、そのポジションのフレットで試聴できるようにする
 el.chordLookupGrid.addEventListener("click", (e) => {
-  const diagramEl = e.target.closest(".chord-lookup-diagram-editable");
-  if (!diagramEl) return;
-  const item = state.timeline.find((i) => i.id === diagramEl.dataset.id);
-  if (item) openCustomDiagramModal(item);
+  const editableEl = e.target.closest(".chord-lookup-diagram-editable");
+  if (editableEl) {
+    const item = state.timeline.find((i) => i.id === editableEl.dataset.id);
+    if (item) openCustomDiagramModal(item);
+    return;
+  }
+  const playableEl = e.target.closest(".chord-lookup-diagram-playable");
+  if (playableEl) {
+    const item = state.timeline.find((i) => i.id === playableEl.dataset.id);
+    if (item) playChordStrum(resolveChordDiagram(item).frets);
+  }
 });
 
 /* ============================================================
@@ -1244,6 +1302,291 @@ function getNextChordItem(fromIndex) {
   }
   return null;
 }
+
+/* ============================================================
+   ギター練習ドリル画面 (#practice-drill-section)
+   既存の編集/プレビュー画面のロジックには一切手を加えず、practiceState という
+   独立した状態だけを見て動く。timeline配列は「読み取り専用」の参照元として使うのみ。
+   ============================================================ */
+
+// state.timeline中で、実際にコードが割り当てられているsegmentのインデックス一覧を返す
+// (歌詞のみの行・改行はコードチェンジの練習に関係しないので除外する)
+function getChordSegmentIndices() {
+  const indices = [];
+  state.timeline.forEach((item, i) => {
+    if (item.type === "segment" && item.root) indices.push(i);
+  });
+  return indices;
+}
+
+// 自動抽出モード: タイムライン中の隣り合う2つのコードを、practiceState.pairIndexが指す位置から取り出す
+function getAutoPracticePair() {
+  const indices = getChordSegmentIndices();
+  if (indices.length < 2) return null;
+  const pairCount = indices.length - 1;
+  practiceState.pairIndex = clampVariantIndex(practiceState.pairIndex, pairCount);
+  const itemA = state.timeline[indices[practiceState.pairIndex]];
+  const itemB = state.timeline[indices[practiceState.pairIndex + 1]];
+  return { itemA, itemB, position: practiceState.pairIndex, total: pairCount };
+}
+
+// 手動ダイヤルモード: practiceState.manualA/manualBのルート・品質から仮のコードアイテムを組み立てる
+function getManualPracticePair() {
+  const itemA = {
+    root: practiceState.manualA.root,
+    qualityKey: practiceState.manualA.qualityKey,
+    name: buildChordName(practiceState.manualA.root, practiceState.manualA.qualityKey),
+  };
+  const itemB = {
+    root: practiceState.manualB.root,
+    qualityKey: practiceState.manualB.qualityKey,
+    name: buildChordName(practiceState.manualB.root, practiceState.manualB.qualityKey),
+  };
+  return { itemA, itemB, position: 0, total: 0 };
+}
+
+function getCurrentPracticePair() {
+  return practiceState.source === "manual" ? getManualPracticePair() : getAutoPracticePair();
+}
+
+// 練習ドリル画面の①課題コードチェンジ表示エリアを、practiceStateの現在値に合わせて描き直す
+function renderPracticeChallenge() {
+  el.practiceSourceAutoBtn.classList.toggle("active", practiceState.source === "auto");
+  el.practiceSourceManualBtn.classList.toggle("active", practiceState.source === "manual");
+  el.practiceAutoNav.classList.toggle("hidden", practiceState.source !== "auto");
+  el.practiceManualDials.classList.toggle("hidden", practiceState.source !== "manual");
+
+  const pair = getCurrentPracticePair();
+
+  if (!pair) {
+    practiceState.currentPair = null;
+    el.practiceChordAName.textContent = "—";
+    el.practiceChordBName.textContent = "—";
+    el.practiceChordADiagram.innerHTML = "";
+    el.practiceChordBDiagram.innerHTML = "";
+    el.practicePairPosition.textContent = "タイムラインにコードを2つ以上追加してください";
+    el.practicePairPrevBtn.disabled = true;
+    el.practicePairNextBtn.disabled = true;
+    return;
+  }
+
+  const { itemA, itemB, position, total } = pair;
+
+  if (practiceState.source === "auto") {
+    el.practicePairPosition.textContent = `${position + 1} / ${total}`;
+    el.practicePairPrevBtn.disabled = total <= 1;
+    el.practicePairNextBtn.disabled = total <= 1;
+  } else {
+    el.practicePairPosition.textContent = "";
+  }
+
+  const diagramA = resolveChordDiagram(itemA);
+  const diagramB = resolveChordDiagram(itemB);
+  const pivots = findPivotFingers(diagramA.frets, diagramB.frets);
+  const guides = findGuideFingers(diagramA.frets, diagramB.frets);
+  const pivotStrings = pivots.map((p) => p.stringIndex);
+
+  el.practiceChordAName.textContent = itemA.name;
+  el.practiceChordBName.textContent = itemB.name;
+  el.practiceChordADiagram.innerHTML = renderChordSvg(diagramA.frets, {
+    root: itemA.root,
+    pivotStrings,
+  });
+  el.practiceChordBDiagram.innerHTML = renderChordSvg(diagramB.frets, {
+    root: itemB.root,
+    pivotStrings,
+    guideMoves: guides,
+  });
+
+  practiceState.currentPair = {
+    frets: [diagramA.frets, diagramB.frets],
+    roots: [itemA.root, itemB.root],
+  };
+}
+
+// 手動ダイヤル用の<select>に、全ルート×全品質の組み合わせを流し込む(初回のみ呼べば十分)
+function populatePracticeManualSelects() {
+  const optionsHtml = ROOT_NOTES.map((root) =>
+    QUALITIES.map((q) => `<option value="${root}|${q.key}">${buildChordName(root, q.key)}</option>`).join("")
+  ).join("");
+  el.practiceChordASelect.innerHTML = optionsHtml;
+  el.practiceChordBSelect.innerHTML = optionsHtml;
+  el.practiceChordASelect.value = `${practiceState.manualA.root}|${practiceState.manualA.qualityKey}`;
+  el.practiceChordBSelect.value = `${practiceState.manualB.root}|${practiceState.manualB.qualityKey}`;
+}
+
+// ①のダイアグラムをタップした時の再生。Root-Firstトグルの状態に応じて再生方式を切り替える
+function playPracticeChordSlot(which) {
+  if (!practiceState.currentPair) return;
+  const idx = which === "A" ? 0 : 1;
+  const frets = practiceState.currentPair.frets[idx];
+  const rootNote = practiceState.currentPair.roots[idx];
+  if (el.rootFirstToggle.checked) {
+    playChordRootFirst(frets, rootNote);
+  } else {
+    playChordStrum(frets);
+  }
+}
+
+el.practiceSourceAutoBtn.addEventListener("click", () => {
+  practiceState.source = "auto";
+  renderPracticeChallenge();
+});
+el.practiceSourceManualBtn.addEventListener("click", () => {
+  practiceState.source = "manual";
+  renderPracticeChallenge();
+});
+el.practicePairPrevBtn.addEventListener("click", () => {
+  practiceState.pairIndex--;
+  renderPracticeChallenge();
+});
+el.practicePairNextBtn.addEventListener("click", () => {
+  practiceState.pairIndex++;
+  renderPracticeChallenge();
+});
+el.practiceChordASelect.addEventListener("change", () => {
+  const [root, qualityKey] = el.practiceChordASelect.value.split("|");
+  practiceState.manualA = { root, qualityKey };
+  renderPracticeChallenge();
+});
+el.practiceChordBSelect.addEventListener("change", () => {
+  const [root, qualityKey] = el.practiceChordBSelect.value.split("|");
+  practiceState.manualB = { root, qualityKey };
+  renderPracticeChallenge();
+});
+el.practiceChordADiagram.addEventListener("click", () => playPracticeChordSlot("A"));
+el.practiceChordBDiagram.addEventListener("click", () => playPracticeChordSlot("B"));
+
+/* ---------- ②1分間コードチェンジ・カウンター(Justin式) ---------- */
+
+function formatTimer(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function startPracticeCounter() {
+  if (practiceState.running) return;
+  const bpm = Math.min(240, Math.max(30, parseInt(el.practiceBpmInput.value, 10) || 60));
+  el.practiceBpmInput.value = bpm;
+
+  practiceState.running = true;
+  practiceState.secondsLeft = 60;
+  practiceState.count = 0;
+  practiceState.beatCount = 0;
+  el.practiceCount.textContent = "0";
+  el.practiceTimer.textContent = formatTimer(60);
+  el.practiceStartBtn.disabled = true;
+  el.practiceStopBtn.disabled = false;
+  el.practiceTapBtn.disabled = false;
+  el.practiceBpmInput.disabled = true;
+
+  const beatMs = 60000 / bpm;
+  practiceState.intervalId = setInterval(() => {
+    practiceState.beatCount++;
+    playMetronomeClick(practiceState.beatCount % 4 === 1);
+  }, beatMs);
+
+  practiceState.timerIntervalId = setInterval(() => {
+    practiceState.secondsLeft--;
+    el.practiceTimer.textContent = formatTimer(Math.max(0, practiceState.secondsLeft));
+    if (practiceState.secondsLeft <= 0) finishPracticeCounter();
+  }, 1000);
+}
+
+// カウンターを止める(共通処理)。手動停止と自動終了(finishPracticeCounter)の両方から呼ばれる
+function stopPracticeCounter() {
+  if (practiceState.intervalId) {
+    clearInterval(practiceState.intervalId);
+    practiceState.intervalId = null;
+  }
+  if (practiceState.timerIntervalId) {
+    clearInterval(practiceState.timerIntervalId);
+    practiceState.timerIntervalId = null;
+  }
+  practiceState.running = false;
+  el.practiceStartBtn.disabled = false;
+  el.practiceStopBtn.disabled = true;
+  el.practiceTapBtn.disabled = true;
+  el.practiceBpmInput.disabled = false;
+}
+
+// 1分間経過による自動終了。手動停止(中断)とは違い、記録をLocalStorageに保存してグラフに反映する
+function finishPracticeCounter() {
+  const finalCount = practiceState.count;
+  const bpm = parseInt(el.practiceBpmInput.value, 10) || 60;
+  stopPracticeCounter();
+  el.practiceTimer.textContent = formatTimer(0);
+  if (finalCount > 0) {
+    savePracticeRecord({ count: finalCount, bpm, date: new Date().toISOString() });
+    renderPracticeHistory();
+  }
+  showToast(`1分間で ${finalCount} 回チェンジできました！`);
+}
+
+el.practiceStartBtn.addEventListener("click", startPracticeCounter);
+el.practiceStopBtn.addEventListener("click", stopPracticeCounter);
+el.practiceTapBtn.addEventListener("click", () => {
+  if (!practiceState.running) return;
+  practiceState.count++;
+  el.practiceCount.textContent = String(practiceState.count);
+});
+
+function loadPracticeHistory() {
+  try {
+    const raw = localStorage.getItem(PRACTICE_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    console.error("練習履歴の読み込みに失敗しました", err);
+    return [];
+  }
+}
+
+function savePracticeRecord(record) {
+  const history = loadPracticeHistory();
+  history.push(record);
+  localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(history.slice(-20)));
+}
+
+function renderPracticeHistory() {
+  const history = loadPracticeHistory();
+  if (!history.length) {
+    el.practiceHistory.innerHTML = `<p class="practice-history-empty">まだ記録がありません。1分間カウンターを実行すると、ここに結果が積み上がっていきます。</p>`;
+    return;
+  }
+  const maxCount = Math.max(...history.map((r) => r.count), 1);
+  const rows = history
+    .slice()
+    .reverse()
+    .map((r) => {
+      const widthPct = Math.max(6, Math.round((r.count / maxCount) * 100));
+      const dateLabel = new Date(r.date).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
+      return `<div class="practice-history-row" title="BPM ${r.bpm}">
+        <span class="practice-history-date">${dateLabel}</span>
+        <span class="practice-history-bar-track"><span class="practice-history-bar" style="width:${widthPct}%"></span></span>
+        <span class="practice-history-count">${r.count}回</span>
+      </div>`;
+    })
+    .join("");
+  el.practiceHistory.innerHTML = rows;
+}
+
+/* ---------- ④参考動画(YouTube)埋め込み ---------- */
+
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  return match ? match[1] : null;
+}
+
+el.practiceVideoLoadBtn.addEventListener("click", () => {
+  const id = extractYouTubeId(el.practiceVideoUrlInput.value.trim());
+  if (!id) {
+    el.practiceVideoEmbed.innerHTML = `<p class="practice-video-embed-empty">有効なYouTubeのURLを入力してください。</p>`;
+    return;
+  }
+  el.practiceVideoEmbed.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}" title="参考動画" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+});
 
 /* ============================================================
    自作カスタムダイアグラム編集モーダル
@@ -1522,6 +1865,9 @@ function init() {
   switchAppMode("edit");
   setVolume(Number(el.volumeSlider.value) / 100);
   updateSoundIcon();
+  populatePracticeManualSelects();
+  renderPracticeHistory();
+  el.practiceVideoEmbed.innerHTML = `<p class="practice-video-embed-empty">YouTubeのURLを貼り付けると、ここに参考動画が表示されます。</p>`;
 }
 
 init();
