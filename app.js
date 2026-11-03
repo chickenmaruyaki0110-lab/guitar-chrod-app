@@ -6,11 +6,11 @@
 const STORAGE_KEY = "chordSheetApp.songs";
 const DRAFT_KEY = "chordSheetApp.draft";
 const CUSTOM_DIAGRAMS_KEY = "chordSheetApp.customDiagrams";
-const PRACTICE_HISTORY_KEY = "chordSheetApp.practiceHistory";
 
 const state = {
   root: "C",
   qualityKey: "maj",
+  bass: null,          // オンコード(分数コード)のベース音。未指定ならnull
   variantIndex: 0,    // ビルダーで選んでいる押さえ方のバリエーション(フォーム)の番号
   timeline: [],       // {id, type: 'segment'|'linebreak', root?, qualityKey?, name?, lyricText?, variantIndex?}
   currentSongId: null,
@@ -18,19 +18,15 @@ const state = {
   appMode: "edit",    // 'edit' | 'view'     (画面全体: 編集画面 or 保存曲の閲覧画面)
 };
 
+// 一度に横並びで表示するコードダイアグラムの最大数
+const PRACTICE_WINDOW_SIZE = 4;
+
 // ギター練習ドリル画面専用の状態。既存のtimeline編集/保存ロジックとは独立して管理する。
 const practiceState = {
-  source: "auto",   // 'auto'(タイムラインから自動抽出) | 'manual'(手動ダイヤル)
-  pairIndex: 0,      // 自動抽出モードで、タイムライン中の何番目のコードを基点にしているか
-  manualA: { root: "C", qualityKey: "maj" },
-  manualB: { root: "A", qualityKey: "m" },
-  currentPair: null,   // renderPracticeChallengeが最後に描画したペアの{frets, roots} (再生用)
-  running: false,
-  intervalId: null,      // メトロノームクリック用のsetInterval ID
-  timerIntervalId: null, // 1秒ごとのカウントダウン表示用のsetInterval ID
-  beatCount: 0,
-  secondsLeft: 60,
-  count: 0,
+  source: "auto",      // 'auto'(タイムラインから自動抽出) | 'manual'(自分で組み立てた進行)
+  windowStart: 0,        // 自動抽出モードで、タイムライン中の何番目のコードから表示を始めているか
+  progression: [],        // 手動モードで自分で組み立てたコード進行 [{id, root, qualityKey, name, ...}, ...]
+  currentChords: [],      // renderPracticeChallengeが最後に描画したコード列の{frets, root}配列 (再生用)
 };
 
 // item.root/qualityKey から使えるフォーム一覧と、item.variantIndex が指す現在のフォームを取得する
@@ -46,7 +42,9 @@ function clampVariantIndex(index, length) {
 const el = {
   rootGrid: document.getElementById("rootGrid"),
   qualityGrid: document.getElementById("qualityGrid"),
+  bassGrid: document.getElementById("bassGrid"),
   previewName: document.getElementById("previewName"),
+  previewBassBadge: document.getElementById("previewBassBadge"),
   previewDiagram: document.getElementById("previewDiagram"),
   previewNote: document.getElementById("previewNote"),
   addChordBtn: document.getElementById("addChordBtn"),
@@ -83,6 +81,13 @@ const el = {
   chordLookupOverlay: document.getElementById("chordLookupOverlay"),
   closeChordLookupBtn: document.getElementById("closeChordLookupBtn"),
   chordLookupGrid: document.getElementById("chordLookupGrid"),
+  chordLookupSongTabBtn: document.getElementById("chordLookupSongTabBtn"),
+  chordLookupDictionaryTabBtn: document.getElementById("chordLookupDictionaryTabBtn"),
+  chordLookupSongPanel: document.getElementById("chordLookupSongPanel"),
+  chordDictionaryPanel: document.getElementById("chordDictionaryPanel"),
+  chordDictionaryRootGrid: document.getElementById("chordDictionaryRootGrid"),
+  chordDictionaryBassGrid: document.getElementById("chordDictionaryBassGrid"),
+  chordDictionaryGrid: document.getElementById("chordDictionaryGrid"),
   hamburgerBtn: document.getElementById("hamburgerBtn"),
   songDrawer: document.getElementById("songDrawer"),
   songDrawerOverlay: document.getElementById("songDrawerOverlay"),
@@ -111,21 +116,11 @@ const el = {
   practicePairPrevBtn: document.getElementById("practicePairPrevBtn"),
   practicePairNextBtn: document.getElementById("practicePairNextBtn"),
   practicePairPosition: document.getElementById("practicePairPosition"),
-  practiceManualDials: document.getElementById("practiceManualDials"),
-  practiceChordASelect: document.getElementById("practiceChordASelect"),
-  practiceChordBSelect: document.getElementById("practiceChordBSelect"),
-  practiceChordAName: document.getElementById("practiceChordAName"),
-  practiceChordADiagram: document.getElementById("practiceChordADiagram"),
-  practiceChordBName: document.getElementById("practiceChordBName"),
-  practiceChordBDiagram: document.getElementById("practiceChordBDiagram"),
-  practiceChordPair: document.querySelector(".practice-chord-pair"),
-  practiceBpmInput: document.getElementById("practiceBpmInput"),
-  practiceStartBtn: document.getElementById("practiceStartBtn"),
-  practiceStopBtn: document.getElementById("practiceStopBtn"),
-  practiceTimer: document.getElementById("practiceTimer"),
-  practiceTapBtn: document.getElementById("practiceTapBtn"),
-  practiceCount: document.getElementById("practiceCount"),
-  practiceHistory: document.getElementById("practiceHistory"),
+  practiceManualBuilder: document.getElementById("practiceManualBuilder"),
+  practiceChordSearchInput: document.getElementById("practiceChordSearchInput"),
+  practiceChordSearchList: document.getElementById("practiceChordSearchList"),
+  practiceChordAddBtn: document.getElementById("practiceChordAddBtn"),
+  practiceChordRow: document.getElementById("practiceChordRow"),
   rootFirstToggle: document.getElementById("rootFirstToggle"),
   practiceVideoUrlInput: document.getElementById("practiceVideoUrlInput"),
   practiceVideoLoadBtn: document.getElementById("practiceVideoLoadBtn"),
@@ -175,6 +170,16 @@ function renderQualityGrid() {
   syncActiveButtons();
 }
 
+// オンコード(分数コード)のベース音選択ボタン群。「指定なし」+ 12音のスラッシュ表記
+function renderBassGrid() {
+  const noneBtn = `<button type="button" class="chip-btn bass-btn bass-btn-none" data-bass="">指定なし</button>`;
+  const noteButtons = ROOT_NOTES.map(
+    (note) => `<button type="button" class="chip-btn bass-btn" data-bass="${note}">/${note}</button>`
+  ).join("");
+  el.bassGrid.innerHTML = noneBtn + noteButtons;
+  syncActiveButtons();
+}
+
 function syncActiveButtons() {
   el.rootGrid.querySelectorAll(".root-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.root === state.root);
@@ -182,23 +187,44 @@ function syncActiveButtons() {
   el.qualityGrid.querySelectorAll(".quality-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.quality === state.qualityKey);
   });
+  el.bassGrid.querySelectorAll(".bass-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.bass === (state.bass || ""));
+  });
 }
 
 function currentBuilderVariants() {
   return getChordFretVariants(state.root, state.qualityKey);
 }
 
+// state.bassが設定されている時、そのベース音を鳴らせる弦を含むフォームへ自動的に切り替える
+// (「データ未定義の場合は代用フォーム」の代わりに使う、ベース音を優先したフォーム選択)
+function applyBassPreferredVariant() {
+  if (!state.bass) return;
+  const variants = currentBuilderVariants();
+  const preferred = pickVariantForBass(variants, state.bass);
+  const idx = variants.indexOf(preferred);
+  state.variantIndex = idx >= 0 ? idx : 0;
+}
+
 function updatePreview() {
   const variants = currentBuilderVariants();
   state.variantIndex = clampVariantIndex(state.variantIndex, variants.length);
   const variant = variants[state.variantIndex];
-  const name = buildChordName(state.root, state.qualityKey);
+  const name = buildChordName(state.root, state.qualityKey, state.bass);
 
   el.previewName.textContent = name;
-  el.previewDiagram.innerHTML = renderChordSvg(variant.frets, { compact: false, root: state.root });
+  el.previewDiagram.innerHTML = renderChordSvg(variant.frets, { compact: false, root: state.root, bass: state.bass });
   el.previewNote.textContent = variant.manual
     ? ""
     : "※ このフォームは自動生成された参考の押さえ方です";
+
+  if (state.bass) {
+    const degree = getBassDegreeLabel(state.root, state.bass);
+    el.previewBassBadge.textContent = `ベース音: ${state.bass}${degree ? `(${degree})` : ""}`;
+    el.previewBassBadge.classList.remove("hidden");
+  } else {
+    el.previewBassBadge.classList.add("hidden");
+  }
 
   el.variantLabel.textContent = variants.length > 1 ? `${variant.label}（${state.variantIndex + 1}/${variants.length}）` : variant.label;
   el.variantPrevBtn.disabled = variants.length <= 1;
@@ -210,6 +236,7 @@ el.rootGrid.addEventListener("click", (e) => {
   if (!btn) return;
   state.root = btn.dataset.root;
   state.variantIndex = 0;
+  applyBassPreferredVariant();
   syncActiveButtons();
   updatePreview();
   saveDraft();
@@ -220,6 +247,17 @@ el.qualityGrid.addEventListener("click", (e) => {
   if (!btn) return;
   state.qualityKey = btn.dataset.quality;
   state.variantIndex = 0;
+  applyBassPreferredVariant();
+  syncActiveButtons();
+  updatePreview();
+  saveDraft();
+});
+
+el.bassGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest(".bass-btn");
+  if (!btn) return;
+  state.bass = btn.dataset.bass || null;
+  applyBassPreferredVariant();
   syncActiveButtons();
   updatePreview();
   saveDraft();
@@ -239,10 +277,15 @@ el.variantNextBtn.addEventListener("click", () => {
   saveDraft();
 });
 
-// ビルダーのダイアグラムをクリックしたら、今選んでいる「ポジション」のフレットで音を鳴らす
+// ビルダーのダイアグラムをクリックしたら、今選んでいる「ポジション」のフレットで音を鳴らす。
+// ベース音が指定されていれば、その音を強調する再生に切り替える
 el.previewDiagram.addEventListener("click", () => {
   const variants = currentBuilderVariants();
-  playChordStrum(variants[state.variantIndex].frets);
+  if (state.bass) {
+    playChordWithBass(variants[state.variantIndex].frets, state.bass);
+  } else {
+    playChordStrum(variants[state.variantIndex].frets);
+  }
 });
 
 // コード + 歌詞をセットでタイムラインに追加（U-FRET風の1ブロック）
@@ -252,8 +295,8 @@ el.addChordBtn.addEventListener("click", () => {
     type: "segment",
     root: state.root,
     qualityKey: state.qualityKey,
-    name: buildChordName(state.root, state.qualityKey),
-    bass: null,
+    name: buildChordName(state.root, state.qualityKey, state.bass),
+    bass: state.bass,
     altered5: null,
     tensions: [],
     lyricText: el.lyricInput.value.trim(),
@@ -550,13 +593,22 @@ function handleChordBlockClick(anchorEl) {
    ============================================================ */
 let activeChordPopupId = null;
 
+// itemにベース音(オンコード)が指定されていれば強調再生、無ければ通常のストローク再生を行う
+function playItemChord(item, frets) {
+  if (item && item.bass) {
+    playChordWithBass(frets, item.bass);
+  } else {
+    playChordStrum(frets);
+  }
+}
+
 function toggleChordPopup(anchorEl) {
   const id = anchorEl.dataset.id;
   const item = state.timeline.find((i) => i.id === id);
   if (!item || !item.root) return;
 
   // 現在画面に描画されている「そのポジション」のフレットで鳴らす(既知/自作/代用すべて同じ経路)
-  playChordStrum(resolveChordDiagram(item).frets);
+  playItemChord(item, resolveChordDiagram(item).frets);
 
   if (activeChordPopupId === id) {
     hideChordPopup();
@@ -654,7 +706,7 @@ function positionChordPopup(anchorEl) {
 el.chordPopupDiagram.addEventListener("click", () => {
   const item = state.timeline.find((i) => i.id === activeChordPopupId);
   if (!item || !item.root) return;
-  playChordStrum(resolveChordDiagram(item).frets);
+  playItemChord(item, resolveChordDiagram(item).frets);
 });
 
 document.addEventListener("click", (e) => {
@@ -684,7 +736,6 @@ el.practiceModeBtn.addEventListener("click", () => switchMode("practice"));
 
 function switchMode(mode) {
   hideChordPopup();
-  if (state.mode === "practice" && mode !== "practice") stopPracticeCounter();
   state.mode = mode;
   el.editModeBtn.classList.toggle("active", mode === "edit");
   el.previewModeBtn.classList.toggle("active", mode === "preview");
@@ -709,30 +760,32 @@ const FLAT_TO_SHARP = {
 const QUALITY_ALIASES = {
   "": "maj", maj: "maj", M: "maj",
   m: "m", min: "m",
-  "7": "7", "11": "7", "13": "13",
-  m7: "m7", min7: "m7", minor7: "m7", m7b5: "m7b5", m11: "m7", m9: "m9",
-  mM7: "m",
-  maj7: "maj7", M7: "maj7", maj9: "maj9",
-  sus4: "sus4", sus: "sus4", sus2: "sus2", "7sus4": "sus4",
+  "7": "7", "11": "11", "13": "13",
+  m7: "m7", min7: "m7", minor7: "m7", m7b5: "m7b5", m11: "m11", m13: "m13", m9: "m9",
+  mM7: "mMaj7", mMaj7: "mMaj7", mMaj9: "mMaj9",
+  maj7: "maj7", M7: "maj7", maj9: "maj9", maj13: "maj13", "maj7b5": "maj7b5", "maj7#11": "maj7#11",
+  sus4: "sus4", sus: "sus4", sus2: "sus2", "7sus4": "7sus4", "7sus2": "7sus2",
   "6": "6",
-  m6: "m6", "69": "69",
-  dim: "dim", dim7: "dim",
-  aug: "aug", aug7: "aug7",
+  m6: "m6", "69": "69", "6/9": "69", m69: "m69", "m6/9": "m69",
+  dim: "dim", dim7: "dim7",
+  aug: "aug", aug7: "aug7", aug9: "aug9", augMaj7: "augMaj7",
   "9": "9",
-  add9: "add9", add11: "maj",
+  add9: "add9", add11: "add11", madd9: "madd9",
+  "5": "5", "7b5": "7b5", "7b9": "7b9", "7#9": "7#9", "7#11": "7#11",
 };
 
 // 既知の品質表記(コード名から自動でダイアグラムを引ける範囲)。
 // 前方一致で解析するため、短い表記(例:"m")は必ずそれを含む長い表記(例:"m7","mM7")より後に置く。
 // これを誤ると「連結してしまったコードの分割」や「A7sus4のような複合語」が正しく切り出せなくなる。
 const CHORD_QUALITY_PATTERN = [
-  "mM7", "m7b5", "m7", "m6", "m11", "m9", "minor7", "min7", "maj7", "maj9", "min", "maj", "m",
+  "mMaj9", "mMaj7", "mM7", "madd9", "m7b5", "m13", "m11", "m6/9", "m69", "m7", "m6", "m9", "minor7", "min7",
+  "maj13", "maj7#11", "maj7b5", "maj7", "maj9", "min", "maj", "m",
   "M7", "M",
-  "7sus4", "sus4", "sus2", "sus",
+  "7sus4", "7sus2", "sus4", "sus2", "sus",
   "dim7", "dim",
-  "aug7", "aug",
+  "augMaj7", "aug9", "aug7", "aug",
   "add9", "add11",
-  "69", "6", "7", "9", "11", "13",
+  "6/9", "69", "6", "7b5", "7b9", "7#9", "7#11", "7", "9", "11", "13", "5",
 ].join("|");
 
 // ルート、品質、フラット5度(-5等)、テンション(9,13等のカッコ表記)、ベース音(オンコード)まで
@@ -1074,7 +1127,114 @@ function renderChordLookup() {
   el.chordLookupGrid.innerHTML = chords.map(renderChordLookupCard).join("");
 }
 
+/* ============================================================
+   コード図鑑: ルート音を選ぶと、chords-data.jsに登録されている
+   そのルートの全コードタイプを一覧生成する(タイムラインとは無関係の辞書引き機能)
+   ============================================================ */
+let chordDictionarySelectedRoot = null;
+let chordDictionarySelectedBass = null; // オンコード(分数コード)のベース音。未指定ならnull
+
+function renderChordDictionaryRootGrid() {
+  el.chordDictionaryRootGrid.innerHTML = ROOT_NOTES.map(
+    (note) =>
+      `<button type="button" class="chord-dictionary-root-btn${note === chordDictionarySelectedRoot ? " active" : ""}" data-root="${note}">${note}</button>`
+  ).join("");
+}
+
+// コード図鑑用のベース音選択ボタン群。ビルダーのbassGridと同じ考え方(「指定なし」+12音)
+function renderChordDictionaryBassGrid() {
+  const noneBtn = `<button type="button" class="chip-btn bass-btn bass-btn-none${chordDictionarySelectedBass ? "" : " active"}" data-bass="">指定なし</button>`;
+  const noteButtons = ROOT_NOTES.map(
+    (note) =>
+      `<button type="button" class="chip-btn bass-btn${note === chordDictionarySelectedBass ? " active" : ""}" data-bass="${note}">/${note}</button>`
+  ).join("");
+  el.chordDictionaryBassGrid.innerHTML = noneBtn + noteButtons;
+}
+
+function renderChordDictionaryCard(root, qualityKey, bass) {
+  const variants = getChordFretVariants(root, qualityKey);
+  const variant = pickVariantForBass(variants, bass);
+  const name = buildChordName(root, qualityKey, bass);
+  const diagramSvg = renderChordSvg(variant.frets, { compact: true, root, bass });
+  const tonesHtml = getChordTones(root, qualityKey)
+    .map((t) => `<span class="chord-lookup-tone${t.degree === "R" ? " root" : ""}">${escapeHtml(t.note)}(${escapeHtml(t.degree)})</span>`)
+    .join("");
+
+  let bassBadgeHtml = "";
+  if (bass) {
+    const degree = getBassDegreeLabel(root, bass);
+    bassBadgeHtml = `<span class="chord-lookup-bass-badge">ベース音: ${escapeHtml(bass)}${degree ? `(${escapeHtml(degree)})` : ""}</span>`;
+  }
+
+  return `
+    <div class="chord-lookup-card">
+      <div class="chord-lookup-card-head">
+        <div class="chord-lookup-name">${escapeHtml(name)}</div>
+        <button type="button" class="chord-dictionary-play-btn" data-root="${root}" data-quality="${qualityKey}" data-bass="${bass || ""}" title="試聴" aria-label="試聴">🔊</button>
+      </div>
+      <div class="chord-lookup-diagram">${diagramSvg}</div>
+      ${bassBadgeHtml}
+      <div class="chord-lookup-tones">${tonesHtml}</div>
+    </div>
+  `;
+}
+
+function renderChordDictionaryCards() {
+  if (!chordDictionarySelectedRoot) {
+    el.chordDictionaryGrid.innerHTML = `<div class="chord-lookup-empty">上のルート音をタップすると、そのルートの全コードタイプが表示されます。</div>`;
+    return;
+  }
+  el.chordDictionaryGrid.innerHTML = QUALITIES.map((q) =>
+    renderChordDictionaryCard(chordDictionarySelectedRoot, q.key, chordDictionarySelectedBass)
+  ).join("");
+}
+
+el.chordDictionaryRootGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest(".chord-dictionary-root-btn");
+  if (!btn) return;
+  chordDictionarySelectedRoot = btn.dataset.root;
+  renderChordDictionaryRootGrid();
+  renderChordDictionaryCards();
+});
+
+el.chordDictionaryBassGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest(".bass-btn");
+  if (!btn) return;
+  chordDictionarySelectedBass = btn.dataset.bass || null;
+  renderChordDictionaryBassGrid();
+  renderChordDictionaryCards();
+});
+
+// コード図鑑カードの🔊ボタン: ベース音が指定されていればそれを強調して、なければ通常のストロークで試聴する
+el.chordDictionaryGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest(".chord-dictionary-play-btn");
+  if (!btn) return;
+  const variants = getChordFretVariants(btn.dataset.root, btn.dataset.quality);
+  const bass = btn.dataset.bass || null;
+  const variant = pickVariantForBass(variants, bass);
+  if (bass) {
+    playChordWithBass(variant.frets, bass);
+  } else {
+    playChordStrum(variant.frets);
+  }
+});
+
+function switchChordLookupTab(tab) {
+  el.chordLookupSongTabBtn.classList.toggle("active", tab === "song");
+  el.chordLookupDictionaryTabBtn.classList.toggle("active", tab === "dictionary");
+  el.chordLookupSongPanel.classList.toggle("hidden", tab !== "song");
+  el.chordDictionaryPanel.classList.toggle("hidden", tab !== "dictionary");
+  if (tab === "dictionary") {
+    renderChordDictionaryRootGrid();
+    renderChordDictionaryBassGrid();
+    renderChordDictionaryCards();
+  }
+}
+el.chordLookupSongTabBtn.addEventListener("click", () => switchChordLookupTab("song"));
+el.chordLookupDictionaryTabBtn.addEventListener("click", () => switchChordLookupTab("dictionary"));
+
 function openChordLookupModal() {
+  switchChordLookupTab("song");
   renderChordLookup();
   el.chordLookupModal.classList.remove("hidden");
 }
@@ -1099,7 +1259,7 @@ el.chordLookupGrid.addEventListener("click", (e) => {
   const playableEl = e.target.closest(".chord-lookup-diagram-playable");
   if (playableEl) {
     const item = state.timeline.find((i) => i.id === playableEl.dataset.id);
-    if (item) playChordStrum(resolveChordDiagram(item).frets);
+    if (item) playItemChord(item, resolveChordDiagram(item).frets);
   }
 });
 
@@ -1128,6 +1288,7 @@ function saveDraft() {
     timeline: state.timeline,
     root: state.root,
     qualityKey: state.qualityKey,
+    bass: state.bass,
   };
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
 }
@@ -1319,113 +1480,120 @@ function getChordSegmentIndices() {
   return indices;
 }
 
-// 自動抽出モード: タイムライン中の隣り合う2つのコードを、practiceState.pairIndexが指す位置から取り出す
-function getAutoPracticePair() {
+// 自動抽出モード: タイムライン中のコードを、practiceState.windowStartを起点に最大PRACTICE_WINDOW_SIZE個取り出す
+function getAutoPracticeChords() {
   const indices = getChordSegmentIndices();
-  if (indices.length < 2) return null;
-  const pairCount = indices.length - 1;
-  practiceState.pairIndex = clampVariantIndex(practiceState.pairIndex, pairCount);
-  const itemA = state.timeline[indices[practiceState.pairIndex]];
-  const itemB = state.timeline[indices[practiceState.pairIndex + 1]];
-  return { itemA, itemB, position: practiceState.pairIndex, total: pairCount };
+  if (indices.length === 0) return null;
+
+  const shown = Math.min(PRACTICE_WINDOW_SIZE, indices.length);
+  const totalWindows = Math.max(1, indices.length - PRACTICE_WINDOW_SIZE + 1);
+  practiceState.windowStart = clampVariantIndex(practiceState.windowStart, totalWindows);
+
+  const items = [];
+  for (let i = 0; i < shown; i++) {
+    items.push(state.timeline[indices[practiceState.windowStart + i]]);
+  }
+  return { items, windowStart: practiceState.windowStart, shown, total: indices.length, totalWindows };
 }
 
-// 手動ダイヤルモード: practiceState.manualA/manualBのルート・品質から仮のコードアイテムを組み立てる
-function getManualPracticePair() {
-  const itemA = {
-    root: practiceState.manualA.root,
-    qualityKey: practiceState.manualA.qualityKey,
-    name: buildChordName(practiceState.manualA.root, practiceState.manualA.qualityKey),
-  };
-  const itemB = {
-    root: practiceState.manualB.root,
-    qualityKey: practiceState.manualB.qualityKey,
-    name: buildChordName(practiceState.manualB.root, practiceState.manualB.qualityKey),
-  };
-  return { itemA, itemB, position: 0, total: 0 };
-}
-
-function getCurrentPracticePair() {
-  return practiceState.source === "manual" ? getManualPracticePair() : getAutoPracticePair();
-}
-
-// 練習ドリル画面の①課題コードチェンジ表示エリアを、practiceStateの現在値に合わせて描き直す
+// 練習ドリル画面の①課題コード進行エリアを、practiceStateの現在値に合わせて描き直す
 function renderPracticeChallenge() {
   el.practiceSourceAutoBtn.classList.toggle("active", practiceState.source === "auto");
   el.practiceSourceManualBtn.classList.toggle("active", practiceState.source === "manual");
   el.practiceAutoNav.classList.toggle("hidden", practiceState.source !== "auto");
-  el.practiceManualDials.classList.toggle("hidden", practiceState.source !== "manual");
+  el.practiceManualBuilder.classList.toggle("hidden", practiceState.source !== "manual");
 
-  const pair = getCurrentPracticePair();
-
-  if (!pair) {
-    practiceState.currentPair = null;
-    el.practiceChordAName.textContent = "—";
-    el.practiceChordBName.textContent = "—";
-    el.practiceChordADiagram.innerHTML = "";
-    el.practiceChordBDiagram.innerHTML = "";
-    el.practicePairPosition.textContent = "タイムラインにコードを2つ以上追加してください";
-    el.practicePairPrevBtn.disabled = true;
-    el.practicePairNextBtn.disabled = true;
+  if (practiceState.source === "manual") {
+    renderPracticeChordRow(practiceState.progression, "上の検索窓からコードを追加すると、ここに並びます。");
     return;
   }
 
-  const { itemA, itemB, position, total } = pair;
-
-  if (practiceState.source === "auto") {
-    el.practicePairPosition.textContent = `${position + 1} / ${total}`;
-    el.practicePairPrevBtn.disabled = total <= 1;
-    el.practicePairNextBtn.disabled = total <= 1;
-  } else {
-    el.practicePairPosition.textContent = "";
+  const result = getAutoPracticeChords();
+  if (!result) {
+    el.practicePairPosition.textContent = "タイムラインにコードを追加してください";
+    el.practicePairPrevBtn.disabled = true;
+    el.practicePairNextBtn.disabled = true;
+    renderPracticeChordRow([], "タイムラインにコードを追加すると、ここに並びます。");
+    return;
   }
 
-  const diagramA = resolveChordDiagram(itemA);
-  const diagramB = resolveChordDiagram(itemB);
-  const pivots = findPivotFingers(diagramA.frets, diagramB.frets);
-  const guides = findGuideFingers(diagramA.frets, diagramB.frets);
-  const pivotStrings = pivots.map((p) => p.stringIndex);
+  const { items, windowStart, shown, total, totalWindows } = result;
+  el.practicePairPosition.textContent =
+    totalWindows > 1 ? `${windowStart + 1}〜${windowStart + shown} / ${total}` : `${total}個のコード`;
+  el.practicePairPrevBtn.disabled = totalWindows <= 1;
+  el.practicePairNextBtn.disabled = totalWindows <= 1;
 
-  el.practiceChordAName.textContent = itemA.name;
-  el.practiceChordBName.textContent = itemB.name;
-  el.practiceChordADiagram.innerHTML = renderChordSvg(diagramA.frets, {
-    root: itemA.root,
-    pivotStrings,
-  });
-  el.practiceChordBDiagram.innerHTML = renderChordSvg(diagramB.frets, {
-    root: itemB.root,
-    pivotStrings,
-    guideMoves: guides,
-  });
-
-  practiceState.currentPair = {
-    frets: [diagramA.frets, diagramB.frets],
-    roots: [itemA.root, itemB.root],
-  };
+  renderPracticeChordRow(items, "");
 }
 
-// 手動ダイヤル用の<select>に、全ルート×全品質の組み合わせを流し込む(初回のみ呼べば十分)
-function populatePracticeManualSelects() {
-  const optionsHtml = ROOT_NOTES.map((root) =>
-    QUALITIES.map((q) => `<option value="${root}|${q.key}">${buildChordName(root, q.key)}</option>`).join("")
-  ).join("");
-  el.practiceChordASelect.innerHTML = optionsHtml;
-  el.practiceChordBSelect.innerHTML = optionsHtml;
-  el.practiceChordASelect.value = `${practiceState.manualA.root}|${practiceState.manualA.qualityKey}`;
-  el.practiceChordBSelect.value = `${practiceState.manualB.root}|${practiceState.manualB.qualityKey}`;
+// コード列(items)を横並びのダイアグラムとして描画する。隣り合う2つずつのPivot/Guideを判定して
+// 「1つ前のコードからこのコードへ移る時の運指」を各ダイアグラムに反映する(先頭のコードには表示なし)。
+function renderPracticeChordRow(items, emptyMessage) {
+  if (!items.length) {
+    practiceState.currentChords = [];
+    el.practiceChordRow.innerHTML = emptyMessage
+      ? `<p class="practice-progression-empty">${escapeHtml(emptyMessage)}</p>`
+      : "";
+    return;
+  }
+
+  const isManual = practiceState.source === "manual";
+  const resolved = items.map((item) => resolveChordDiagram(item));
+
+  const slotsHtml = items.map((item, i) => {
+    let pivotStrings = [];
+    let guideMoves = [];
+    if (i > 0) {
+      pivotStrings = findPivotFingers(resolved[i - 1].frets, resolved[i].frets).map((p) => p.stringIndex);
+      guideMoves = findGuideFingers(resolved[i - 1].frets, resolved[i].frets);
+    }
+    const svg = renderChordSvg(resolved[i].frets, { root: item.root, bass: item.bass, pivotStrings, guideMoves });
+    const controlsHtml = isManual
+      ? `<div class="practice-chord-slot-controls">
+          <button type="button" class="practice-chord-move-btn" data-action="move-left" data-index="${i}" title="左へ移動"${i === 0 ? " disabled" : ""}>◀</button>
+          <button type="button" class="practice-chord-remove-btn" data-action="remove" data-index="${i}" title="削除">✕</button>
+          <button type="button" class="practice-chord-move-btn" data-action="move-right" data-index="${i}" title="右へ移動"${i === items.length - 1 ? " disabled" : ""}>▶</button>
+        </div>`
+      : "";
+    const arrowHtml = i < items.length - 1 ? `<div class="practice-chord-arrow">→</div>` : "";
+    return `<div class="practice-chord-slot" data-index="${i}">
+        ${controlsHtml}
+        <div class="practice-chord-name">${escapeHtml(item.name || buildChordName(item.root, item.qualityKey))}</div>
+        <div class="practice-chord-diagram">${svg}</div>
+      </div>${arrowHtml}`;
+  });
+
+  el.practiceChordRow.innerHTML = slotsHtml.join("");
+  practiceState.currentChords = items.map((item, i) => ({ frets: resolved[i].frets, root: item.root }));
 }
 
 // ①のダイアグラムをタップした時の再生。Root-Firstトグルの状態に応じて再生方式を切り替える
-function playPracticeChordSlot(which) {
-  if (!practiceState.currentPair) return;
-  const idx = which === "A" ? 0 : 1;
-  const frets = practiceState.currentPair.frets[idx];
-  const rootNote = practiceState.currentPair.roots[idx];
+function playPracticeChordSlot(index) {
+  const chord = practiceState.currentChords[index];
+  if (!chord) return;
   if (el.rootFirstToggle.checked) {
-    playChordRootFirst(frets, rootNote);
+    playChordRootFirst(chord.frets, chord.root);
   } else {
-    playChordStrum(frets);
+    playChordStrum(chord.frets);
   }
+}
+
+// 検索窓に入力された1コード分のテキスト(例: "Cmaj7", "D#dim")を解析し、手動進行の末尾に追加する。
+// ルートすら判定できない文字列は追加せずfalseを返す。
+function addPracticeProgressionChord(rawText) {
+  const text = rawText.trim();
+  if (!text) return false;
+  const parsed = parseChordToken(text);
+  if (!parsed || !parsed.root) return false;
+  practiceState.progression.push(makeChordSegment(text, ""));
+  return true;
+}
+
+// 手動ダイヤル用の検索窓(datalist)に、全ルート×全品質の組み合わせを候補として流し込む(初回のみ呼べば十分)
+function populatePracticeChordSearchList() {
+  el.practiceChordSearchList.innerHTML = ROOT_NOTES.map((root) =>
+    QUALITIES.map((q) => `<option value="${buildChordName(root, q.key)}"></option>`).join("")
+  ).join("");
 }
 
 el.practiceSourceAutoBtn.addEventListener("click", () => {
@@ -1437,141 +1605,61 @@ el.practiceSourceManualBtn.addEventListener("click", () => {
   renderPracticeChallenge();
 });
 el.practicePairPrevBtn.addEventListener("click", () => {
-  practiceState.pairIndex--;
+  practiceState.windowStart--;
   renderPracticeChallenge();
 });
 el.practicePairNextBtn.addEventListener("click", () => {
-  practiceState.pairIndex++;
+  practiceState.windowStart++;
   renderPracticeChallenge();
 });
-el.practiceChordASelect.addEventListener("change", () => {
-  const [root, qualityKey] = el.practiceChordASelect.value.split("|");
-  practiceState.manualA = { root, qualityKey };
-  renderPracticeChallenge();
-});
-el.practiceChordBSelect.addEventListener("change", () => {
-  const [root, qualityKey] = el.practiceChordBSelect.value.split("|");
-  practiceState.manualB = { root, qualityKey };
-  renderPracticeChallenge();
-});
-el.practiceChordADiagram.addEventListener("click", () => playPracticeChordSlot("A"));
-el.practiceChordBDiagram.addEventListener("click", () => playPracticeChordSlot("B"));
 
-/* ---------- ②1分間コードチェンジ・カウンター(Justin式) ---------- */
-
-function formatTimer(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function startPracticeCounter() {
-  if (practiceState.running) return;
-  const bpm = Math.min(240, Math.max(30, parseInt(el.practiceBpmInput.value, 10) || 60));
-  el.practiceBpmInput.value = bpm;
-
-  practiceState.running = true;
-  practiceState.secondsLeft = 60;
-  practiceState.count = 0;
-  practiceState.beatCount = 0;
-  el.practiceCount.textContent = "0";
-  el.practiceTimer.textContent = formatTimer(60);
-  el.practiceStartBtn.disabled = true;
-  el.practiceStopBtn.disabled = false;
-  el.practiceTapBtn.disabled = false;
-  el.practiceBpmInput.disabled = true;
-
-  const beatMs = 60000 / bpm;
-  practiceState.intervalId = setInterval(() => {
-    practiceState.beatCount++;
-    playMetronomeClick(practiceState.beatCount % 4 === 1);
-  }, beatMs);
-
-  practiceState.timerIntervalId = setInterval(() => {
-    practiceState.secondsLeft--;
-    el.practiceTimer.textContent = formatTimer(Math.max(0, practiceState.secondsLeft));
-    if (practiceState.secondsLeft <= 0) finishPracticeCounter();
-  }, 1000);
-}
-
-// カウンターを止める(共通処理)。手動停止と自動終了(finishPracticeCounter)の両方から呼ばれる
-function stopPracticeCounter() {
-  if (practiceState.intervalId) {
-    clearInterval(practiceState.intervalId);
-    practiceState.intervalId = null;
+function handlePracticeChordAdd() {
+  const ok = addPracticeProgressionChord(el.practiceChordSearchInput.value);
+  if (ok) {
+    el.practiceChordSearchInput.value = "";
+    renderPracticeChallenge();
+  } else {
+    showToast("コードとして認識できませんでした（例: Cmaj7, D#dim, G7 など）");
   }
-  if (practiceState.timerIntervalId) {
-    clearInterval(practiceState.timerIntervalId);
-    practiceState.timerIntervalId = null;
-  }
-  practiceState.running = false;
-  el.practiceStartBtn.disabled = false;
-  el.practiceStopBtn.disabled = true;
-  el.practiceTapBtn.disabled = true;
-  el.practiceBpmInput.disabled = false;
+  el.practiceChordSearchInput.focus();
 }
-
-// 1分間経過による自動終了。手動停止(中断)とは違い、記録をLocalStorageに保存してグラフに反映する
-function finishPracticeCounter() {
-  const finalCount = practiceState.count;
-  const bpm = parseInt(el.practiceBpmInput.value, 10) || 60;
-  stopPracticeCounter();
-  el.practiceTimer.textContent = formatTimer(0);
-  if (finalCount > 0) {
-    savePracticeRecord({ count: finalCount, bpm, date: new Date().toISOString() });
-    renderPracticeHistory();
+el.practiceChordAddBtn.addEventListener("click", handlePracticeChordAdd);
+el.practiceChordSearchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    handlePracticeChordAdd();
   }
-  showToast(`1分間で ${finalCount} 回チェンジできました！`);
-}
-
-el.practiceStartBtn.addEventListener("click", startPracticeCounter);
-el.practiceStopBtn.addEventListener("click", stopPracticeCounter);
-el.practiceTapBtn.addEventListener("click", () => {
-  if (!practiceState.running) return;
-  practiceState.count++;
-  el.practiceCount.textContent = String(practiceState.count);
 });
 
-function loadPracticeHistory() {
-  try {
-    const raw = localStorage.getItem(PRACTICE_HISTORY_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    console.error("練習履歴の読み込みに失敗しました", err);
-    return [];
-  }
-}
-
-function savePracticeRecord(record) {
-  const history = loadPracticeHistory();
-  history.push(record);
-  localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(history.slice(-20)));
-}
-
-function renderPracticeHistory() {
-  const history = loadPracticeHistory();
-  if (!history.length) {
-    el.practiceHistory.innerHTML = `<p class="practice-history-empty">まだ記録がありません。1分間カウンターを実行すると、ここに結果が積み上がっていきます。</p>`;
+// コード進行の並び替え・削除(手動モードのみ)と、ダイアグラムのクリック再生を1つのリスナーに集約
+el.practiceChordRow.addEventListener("click", (e) => {
+  const diagramEl = e.target.closest(".practice-chord-diagram");
+  if (diagramEl) {
+    const slot = diagramEl.closest(".practice-chord-slot");
+    playPracticeChordSlot(Number(slot.dataset.index));
     return;
   }
-  const maxCount = Math.max(...history.map((r) => r.count), 1);
-  const rows = history
-    .slice()
-    .reverse()
-    .map((r) => {
-      const widthPct = Math.max(6, Math.round((r.count / maxCount) * 100));
-      const dateLabel = new Date(r.date).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
-      return `<div class="practice-history-row" title="BPM ${r.bpm}">
-        <span class="practice-history-date">${dateLabel}</span>
-        <span class="practice-history-bar-track"><span class="practice-history-bar" style="width:${widthPct}%"></span></span>
-        <span class="practice-history-count">${r.count}回</span>
-      </div>`;
-    })
-    .join("");
-  el.practiceHistory.innerHTML = rows;
-}
 
-/* ---------- ④参考動画(YouTube)埋め込み ---------- */
+  const actionBtn = e.target.closest("[data-action]");
+  if (!actionBtn || practiceState.source !== "manual") return;
+  const index = Number(actionBtn.dataset.index);
+  const action = actionBtn.dataset.action;
+
+  if (action === "remove") {
+    practiceState.progression.splice(index, 1);
+  } else if (action === "move-left" && index > 0) {
+    const [item] = practiceState.progression.splice(index, 1);
+    practiceState.progression.splice(index - 1, 0, item);
+  } else if (action === "move-right" && index < practiceState.progression.length - 1) {
+    const [item] = practiceState.progression.splice(index, 1);
+    practiceState.progression.splice(index + 1, 0, item);
+  } else {
+    return;
+  }
+  renderPracticeChallenge();
+});
+
+/* ---------- ③参考動画(YouTube)埋め込み ---------- */
 
 function extractYouTubeId(url) {
   if (!url) return null;
@@ -1855,18 +1943,19 @@ function init() {
     state.timeline = Array.isArray(draft.timeline) ? draft.timeline : [];
     state.root = draft.root || state.root;
     state.qualityKey = draft.qualityKey || state.qualityKey;
+    state.bass = draft.bass || null;
     el.songTitleInput.value = draft.title || "";
   }
 
   renderRootGrid();
   renderQualityGrid();
+  renderBassGrid();
   updatePreview();
   renderTimeline();
   switchAppMode("edit");
   setVolume(Number(el.volumeSlider.value) / 100);
   updateSoundIcon();
-  populatePracticeManualSelects();
-  renderPracticeHistory();
+  populatePracticeChordSearchList();
   el.practiceVideoEmbed.innerHTML = `<p class="practice-video-embed-empty">YouTubeのURLを貼り付けると、ここに参考動画が表示されます。</p>`;
 }
 

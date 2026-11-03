@@ -56,9 +56,15 @@
       <div class="quality-grid" id="qualityGrid"></div>
     </div>
 
+    <div class="panel-block">
+      <h2 class="panel-title"><span class="panel-num">03</span>ベース音を選ぶ（オンコード）</h2>
+      <div class="bass-grid" id="bassGrid"></div>
+    </div>
+
     <div class="panel-block preview-block">
       <div class="preview-box">
         <div class="preview-name" id="previewName">C</div>
+        <div class="preview-bass-badge hidden" id="previewBassBadge"></div>
         <div class="variant-switcher">
           <button type="button" id="variantPrevBtn" class="variant-arrow-btn" title="前のフォーム" aria-label="前のフォーム">◀</button>
           <div class="preview-diagram" id="previewDiagram"></div>
@@ -74,7 +80,7 @@
     </div>
 
     <div class="panel-block">
-      <h2 class="panel-title"><span class="panel-num">03</span>行を調整する</h2>
+      <h2 class="panel-title"><span class="panel-num">04</span>行を調整する</h2>
       <div class="lyric-btn-row">
         <button id="addLyricBtn" class="btn btn-secondary btn-wide">＋ 歌詞のみの行</button>
         <button id="addLineBreakBtn" class="btn btn-ghost" title="タイムラインに改行を挿入">↵ 改行</button>
@@ -102,36 +108,38 @@
 
       <div class="practice-block">
         <div class="practice-block-header">
-          <h3 class="practice-block-title">① 現在の課題コードチェンジ</h3>
+          <h3 class="practice-block-title">① 課題コード進行</h3>
           <div class="practice-source-toggle">
-            <button type="button" id="practiceSourceAutoBtn" class="toggle-btn active">自動抽出</button>
-            <button type="button" id="practiceSourceManualBtn" class="toggle-btn">手動で選ぶ</button>
+            <button type="button" id="practiceSourceAutoBtn" class="toggle-btn active">タイムラインから自動</button>
+            <button type="button" id="practiceSourceManualBtn" class="toggle-btn">自分で組み立てる</button>
           </div>
         </div>
 
         <div class="practice-auto-nav" id="practiceAutoNav">
-          <button type="button" id="practicePairPrevBtn" class="variant-arrow-btn" title="前のコードチェンジ">◀</button>
+          <button type="button" id="practicePairPrevBtn" class="variant-arrow-btn" title="前へ">◀</button>
           <span id="practicePairPosition" class="practice-pair-position"></span>
-          <button type="button" id="practicePairNextBtn" class="variant-arrow-btn" title="次のコードチェンジ">▶</button>
+          <button type="button" id="practicePairNextBtn" class="variant-arrow-btn" title="次へ">▶</button>
         </div>
 
-        <div class="practice-manual-dials hidden" id="practiceManualDials">
-          <select id="practiceChordASelect" class="practice-select"></select>
-          <span class="practice-swap-icon">↔</span>
-          <select id="practiceChordBSelect" class="practice-select"></select>
+        <div class="practice-manual-builder hidden" id="practiceManualBuilder">
+          <div class="practice-chord-search-row">
+            <input
+              type="text"
+              id="practiceChordSearchInput"
+              class="practice-select practice-chord-search-input"
+              placeholder="例: Cmaj7 / D#dim / G7 …"
+              list="practiceChordSearchList"
+              autocomplete="off"
+            />
+            <datalist id="practiceChordSearchList"></datalist>
+            <button type="button" id="practiceChordAddBtn" class="btn btn-accent">＋ 追加</button>
+          </div>
+          <p class="practice-manual-hint">
+            ルート＋コードの種類（例: Cmaj7, D#dim, Faug7）を入力して「＋ 追加」を押すと進行の最後に追加されます。各コードの ◀ ▶ で並び替え、✕ で削除できます。
+          </p>
         </div>
 
-        <div class="practice-chord-pair">
-          <div class="practice-chord-slot">
-            <div class="practice-chord-name" id="practiceChordAName">—</div>
-            <div class="practice-chord-diagram" id="practiceChordADiagram"></div>
-          </div>
-          <div class="practice-swap-icon practice-swap-icon-lg">↔</div>
-          <div class="practice-chord-slot">
-            <div class="practice-chord-name" id="practiceChordBName">—</div>
-            <div class="practice-chord-diagram" id="practiceChordBDiagram"></div>
-          </div>
-        </div>
+        <div class="practice-chord-row" id="practiceChordRow"></div>
 
         <div class="practice-fingering-legend">
           <span class="practice-legend-item"><span class="practice-legend-dot pivot"></span>共通指(Pivot)</span>
@@ -140,28 +148,7 @@
       </div>
 
       <div class="practice-block">
-        <h3 class="practice-block-title">② 1分間コードチェンジ・カウンター</h3>
-        <div class="practice-counter-controls">
-          <label class="practice-bpm-label">BPM
-            <input type="number" id="practiceBpmInput" class="practice-bpm-input" value="60" min="30" max="240" />
-          </label>
-          <button type="button" id="practiceStartBtn" class="btn btn-accent">▶ 開始</button>
-          <button type="button" id="practiceStopBtn" class="btn btn-ghost" disabled>■ 停止</button>
-        </div>
-
-        <div class="practice-counter-display">
-          <div class="practice-timer" id="practiceTimer">1:00</div>
-          <button type="button" id="practiceTapBtn" class="practice-tap-btn" disabled>
-            <span id="practiceCount">0</span>
-            <span class="practice-count-unit">回チェンジ<br />(タップして記録)</span>
-          </button>
-        </div>
-
-        <div class="practice-history" id="practiceHistory"></div>
-      </div>
-
-      <div class="practice-block">
-        <h3 class="practice-block-title">③ Root-First（ルート先行）アルペジオ再生</h3>
+        <h3 class="practice-block-title">② Root-First（ルート先行）アルペジオ再生</h3>
         <label class="practice-toggle-row">
           <input type="checkbox" id="rootFirstToggle" class="practice-toggle-input" />
           <span class="practice-toggle-track"><span class="practice-toggle-thumb"></span></span>
@@ -170,7 +157,7 @@
       </div>
 
       <div class="practice-block">
-        <h3 class="practice-block-title">④ 参考動画</h3>
+        <h3 class="practice-block-title">③ 参考動画</h3>
         <div class="practice-video-input-row">
           <input type="text" id="practiceVideoUrlInput" class="practice-video-input" placeholder="YouTubeのURLを貼り付け…" />
           <button type="button" id="practiceVideoLoadBtn" class="btn btn-secondary">読み込む</button>
@@ -214,16 +201,36 @@ F      C
   </div>
 </div>
 
-<!-- コード逆引き一覧モーダル -->
+<!-- コード逆引き一覧 / コード図鑑モーダル -->
 <div id="chordLookupModal" class="modal hidden">
   <div class="modal-overlay" id="chordLookupOverlay"></div>
   <div class="modal-content modal-wide">
     <div class="modal-header">
-      <h2>登場コード一覧（逆引き）</h2>
+      <h2>コードを調べる</h2>
       <button id="closeChordLookupBtn" class="close-btn" aria-label="閉じる">×</button>
     </div>
-    <p class="import-hint">楽譜タイムラインに登場するコードを重複なく抜き出して一覧表示します。</p>
-    <div id="chordLookupGrid" class="chord-lookup-grid"></div>
+
+    <div class="chord-lookup-tabs" role="tablist">
+      <button type="button" id="chordLookupSongTabBtn" class="toggle-btn active" role="tab">この曲のコード</button>
+      <button type="button" id="chordLookupDictionaryTabBtn" class="toggle-btn" role="tab">コード図鑑（ルート別検索）</button>
+    </div>
+
+    <div id="chordLookupSongPanel">
+      <p class="import-hint">楽譜タイムラインに登場するコードを重複なく抜き出して一覧表示します。</p>
+      <div id="chordLookupGrid" class="chord-lookup-grid"></div>
+    </div>
+
+    <div id="chordDictionaryPanel" class="hidden">
+      <p class="import-hint">ルート音をタップすると、そのルートのすべてのコードタイプの押さえ方を一覧表示します。</p>
+      <div id="chordDictionaryRootGrid" class="chord-dictionary-root-grid"></div>
+
+      <div class="chord-dictionary-bass-row">
+        <span class="chord-dictionary-bass-label">ベース音(オンコード)</span>
+        <div id="chordDictionaryBassGrid" class="bass-grid bass-grid-compact"></div>
+      </div>
+
+      <div id="chordDictionaryGrid" class="chord-lookup-grid"></div>
+    </div>
   </div>
 </div>
 

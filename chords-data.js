@@ -30,6 +30,28 @@ const QUALITIES = [
   { key: "m7b5", label: "m7b5", desc: "マイナーセブンフラットファイブ" },
   { key: "aug7", label: "aug7", desc: "オーギュメントセブンス" },
   { key: "13",   label: "13",   desc: "サーティーン" },
+  // --- O-TO(音楽理論ウェブアプリ)のコード一覧を参考に追加したコード ---
+  { key: "5",       label: "5",       desc: "パワーコード" },
+  { key: "7sus4",   label: "7sus4",   desc: "セブンスサスフォー" },
+  { key: "7sus2",   label: "7sus2",   desc: "セブンスサスツー" },
+  { key: "dim7",    label: "dim7",    desc: "ディミニッシュセブンス" },
+  { key: "mMaj7",   label: "mMaj7",   desc: "マイナーメジャーセブンス" },
+  { key: "mMaj9",   label: "mMaj9",   desc: "マイナーメジャーナインス" },
+  { key: "7b5",     label: "7b5",     desc: "セブンスフラットファイブ" },
+  { key: "7b9",     label: "7b9",     desc: "セブンスフラットナインス" },
+  { key: "7#9",     label: "7#9",     desc: "セブンスシャープナインス" },
+  { key: "7#11",    label: "7#11",    desc: "セブンスシャープイレブンス" },
+  { key: "11",      label: "11",      desc: "イレブンス" },
+  { key: "m11",     label: "m11",     desc: "マイナーイレブンス" },
+  { key: "maj13",   label: "maj13",   desc: "メジャーサーティーン" },
+  { key: "m13",     label: "m13",     desc: "マイナーサーティーン" },
+  { key: "maj7b5",  label: "maj7b5",  desc: "メジャーセブンスフラットファイブ" },
+  { key: "maj7#11", label: "maj7#11", desc: "メジャーセブンスシャープイレブンス" },
+  { key: "madd9",   label: "madd9",   desc: "マイナーアドナインス" },
+  { key: "add11",   label: "add11",   desc: "アドイレブンス" },
+  { key: "m69",     label: "m6/9",    desc: "マイナーシックスナインス" },
+  { key: "aug9",    label: "aug9",    desc: "オーギュメントナインス" },
+  { key: "augMaj7", label: "augMaj7", desc: "オーギュメントメジャーセブンス" },
 ];
 
 // ルートからの半音差 → 度数表示ラベル(学習用に簡略化。長短は区別せず「3」「7」等で表示)
@@ -70,6 +92,27 @@ const CHORD_INTERVALS = {
   m7b5: [0, 3, 6, 10],
   aug7: [0, 4, 8, 10],
   "13": [0, 4, 7, 10, 9],
+  "5": [0, 7],
+  "7sus4": [0, 5, 7, 10],
+  "7sus2": [0, 2, 7, 10],
+  dim7: [0, 3, 6, 9],
+  mMaj7: [0, 3, 7, 11],
+  mMaj9: [0, 3, 7, 11, 2],
+  "7b5": [0, 4, 6, 10],
+  "7b9": [0, 4, 7, 10, 1],
+  "7#9": [0, 4, 7, 10, 3],
+  "7#11": [0, 4, 7, 10, 6],
+  "11": [0, 4, 7, 10, 2, 5],
+  m11: [0, 3, 7, 10, 2, 5],
+  maj13: [0, 4, 7, 11, 2, 9],
+  m13: [0, 3, 7, 10, 2, 9],
+  maj7b5: [0, 4, 6, 11],
+  "maj7#11": [0, 4, 7, 11, 6],
+  madd9: [0, 3, 7, 2],
+  add11: [0, 4, 7, 5],
+  m69: [0, 3, 7, 9, 2],
+  aug9: [0, 4, 8, 10, 2],
+  augMaj7: [0, 4, 8, 11],
 };
 
 /**
@@ -121,6 +164,33 @@ E_SHAPE_OFFSETS.m7b5 = E_SHAPE_OFFSETS.dim;
 E_SHAPE_OFFSETS.aug7 = E_SHAPE_OFFSETS.aug;
 E_SHAPE_OFFSETS["13"] = E_SHAPE_OFFSETS["7"];
 
+// O-TO(音楽理論ウェブアプリ)のコード一覧を参考に追加したコードは、上の「近似」ではなく
+// 構成音をすべて検証した専用のフォームを持つ(ダイアグラムも再生音もそのコード固有の音になる)。
+// E型: 6弦ルート。値は「ルートのフレット位置」からの相対フレット。
+Object.assign(E_SHAPE_OFFSETS, {
+  "5":       [0, 2, 2, null, null, null],
+  "7sus4":   [0, 2, 0, 2, 0, 0],
+  "7sus2":   [0, 2, 0, 4, 0, 2],
+  dim7:      [0, 1, 2, 0, 2, 0],
+  mMaj7:     [0, 2, 1, 0, 0, 0],
+  mMaj9:     [0, 2, 1, 0, 0, 2],
+  "7b5":     [0, 1, 0, 1, null, null],
+  "7b9":     [0, 2, 0, 1, 0, 1],
+  "7#9":     [0, 2, 0, 1, 0, 3],
+  "7#11":    [0, 1, 0, 1, 0, 0],
+  "11":      [0, 0, 0, 2, 0, 2],
+  m11:       [0, 0, 0, 0, 0, 0],
+  maj13:     [0, 4, 1, 1, 0, 0],
+  m13:       [0, 4, 0, 0, 0, 0],
+  maj7b5:    [0, 1, 1, 1, null, null],
+  "maj7#11": [0, 1, 1, 1, 0, 0],
+  madd9:     [0, 2, 4, 0, 0, 0],
+  add11:     [0, 0, 2, 1, 0, 0],
+  m69:       [0, 4, 4, 0, 0, 0],
+  aug9:      [0, 3, 0, 1, 1, 2],
+  augMaj7:   [0, 3, 1, 1, null, null],
+});
+
 const A_SHAPE_OFFSETS = {
   maj:  [null, 0, 2, 2, 2, 0],
   m:    [null, 0, 2, 2, 1, 0],
@@ -144,6 +214,30 @@ A_SHAPE_OFFSETS.sus2 = A_SHAPE_OFFSETS.sus4;
 A_SHAPE_OFFSETS.m7b5 = A_SHAPE_OFFSETS.dim;
 A_SHAPE_OFFSETS.aug7 = A_SHAPE_OFFSETS.aug;
 A_SHAPE_OFFSETS["13"] = A_SHAPE_OFFSETS["7"];
+
+// A型: 5弦ルート(6弦はミュート)。7#9は検証済みのA型が範囲内に無いため定義せず、E型のみを使う。
+Object.assign(A_SHAPE_OFFSETS, {
+  "5":       [null, 0, 2, 2, null, null],
+  "7sus4":   [null, 0, 2, 0, 3, 0],
+  "7sus2":   [null, 0, 2, 0, 0, 0],
+  dim7:      [null, 0, 1, 2, 1, 2],
+  mMaj7:     [null, 0, 2, 1, 1, 0],
+  mMaj9:     [null, 0, 2, 4, 1, 4],
+  "7b5":     [null, 0, 1, 0, 2, null],
+  "7b9":     [null, 0, 2, 3, 2, 3],
+  "7#11":    [null, 0, 1, 0, 2, 0],
+  "11":      [null, 0, 0, 0, 0, 0],
+  m11:       [null, 0, 0, 0, 1, 0],
+  maj13:     [null, 0, 4, 1, 2, 0],
+  m13:       [null, 0, 4, 0, 1, 0],
+  maj7b5:    [null, 0, 1, 1, 2, null],
+  "maj7#11": [null, 0, 1, 1, 2, 0],
+  madd9:     [null, 0, 2, 4, 1, 0],
+  add11:     [null, 0, 0, 2, 2, 0],
+  m69:       [null, 0, 4, 4, 1, 0],
+  aug9:      [null, 0, 3, 4, 2, 3],
+  augMaj7:   [null, 0, 3, 1, 2, null],
+});
 
 /* ---------- よく使う「開放形」コードの手打ちデータ ----------
    初心者が最も目にする形（オープンコード）は自動生成だと不自然になりがちなので、
@@ -234,13 +328,15 @@ function getChordFretVariants(root, qualityKey) {
 
   const idxA = A_CHROMATIC.indexOf(root);
   const idxE = E_CHROMATIC.indexOf(root);
-  const aOffsets = A_SHAPE_OFFSETS[qualityKey] || A_SHAPE_OFFSETS.maj;
-  const eOffsets = E_SHAPE_OFFSETS[qualityKey] || E_SHAPE_OFFSETS.maj;
+  // 構成音が定義済みのコードで片方の型だけ無い場合は、majに置き換えず(別のコードになってしまうため)その型を使わない
+  const known = !!CHORD_INTERVALS[qualityKey];
+  const aOffsets = A_SHAPE_OFFSETS[qualityKey] || (known ? null : A_SHAPE_OFFSETS.maj);
+  const eOffsets = E_SHAPE_OFFSETS[qualityKey] || (known ? null : E_SHAPE_OFFSETS.maj);
 
-  if (idxA >= 0) {
+  if (idxA >= 0 && aOffsets) {
     addVariant(aOffsets.map((o) => (o === null ? "x" : o + idxA)), false);
   }
-  if (idxE >= 0) {
+  if (idxE >= 0 && eOffsets) {
     addVariant(eOffsets.map((o) => (o === null ? "x" : o + idxE)), false);
   }
 
@@ -257,8 +353,30 @@ function getChordFrets(root, qualityKey) {
   return { frets: first.frets.slice(), generated: !first.manual };
 }
 
-/** コード名の文字列を作る（例: "C", "Am7", "F#dim"） */
-function buildChordName(root, qualityKey) {
+/** コード名の文字列を作る（例: "C", "Am7", "F#dim"）。bassを指定すると分数コード表記（例: "G/B"）になる */
+function buildChordName(root, qualityKey, bass) {
   const q = QUALITIES.find((q) => q.key === qualityKey);
-  return `${root}${q ? q.label : ""}`;
+  const base = `${root}${q ? q.label : ""}`;
+  return bass ? `${base}/${bass}` : base;
+}
+
+// 指定したベース音を鳴らせる弦を含む押さえ方(フォーム)を優先的に選ぶ。
+// (見つからなければ先頭のフォームにフォールバックする = 代用フォーム表示)
+function pickVariantForBass(variants, bass) {
+  if (!bass) return variants[0];
+  const bassSemitone = ROOT_NOTES.indexOf(bass);
+  if (bassSemitone < 0) return variants[0];
+  const withBass = variants.find((v) =>
+    v.frets.some((f, i) => typeof f === "number" && f >= 0 && (OPEN_STRING_SEMITONES[i] + f) % 12 === bassSemitone)
+  );
+  return withBass || variants[0];
+}
+
+// ルートから見たベース音の度数ラベル(R/3/5/7等)を求める。度数が判定できなければnull
+function getBassDegreeLabel(root, bass) {
+  const rootSemitone = ROOT_NOTES.indexOf(root);
+  const bassSemitone = ROOT_NOTES.indexOf(bass);
+  if (rootSemitone < 0 || bassSemitone < 0) return null;
+  const interval = (bassSemitone - rootSemitone + 12) % 12;
+  return INTERVAL_DEGREE_LABELS[interval] || null;
 }

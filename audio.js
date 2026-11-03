@@ -146,25 +146,83 @@ function playChordRootFirst(frets, rootNoteName) {
   });
 }
 
+const BASS_EMPHASIS_LEAD_SEC = 0.18; // ベース音を「ドーン」と鳴らしてから、残りの弦が追いかけてくるまでの間
+
+// 分数コード(オンコード)のベース音を、通常のpluckStringよりも太く長く「ドーン」と鳴らす低音専用のピック音
+function pluckBassString(ctx, destination, freq, startTime) {
+  const body = ctx.createOscillator();
+  body.type = "triangle";
+  body.frequency.value = freq;
+
+  const bodyGain = ctx.createGain();
+  bodyGain.gain.value = 1.15; // 通常のpluckStringより一段と際立たせる
+
+  const duration = PLUCK_DURATION_SEC * 1.2; // 低音らしく、通常のピックより少し長く伸ばす
+
+  const tone = ctx.createBiquadFilter();
+  tone.type = "lowpass";
+  tone.frequency.setValueAtTime(2200, startTime);
+  tone.frequency.exponentialRampToValueAtTime(350, startTime + duration);
+
+  const envelope = ctx.createGain();
+  envelope.gain.setValueAtTime(0, startTime);
+  envelope.gain.linearRampToValueAtTime(1, startTime + 0.012);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+  body.connect(bodyGain);
+  bodyGain.connect(tone);
+  tone.connect(envelope);
+  envelope.connect(destination);
+
+  body.start(startTime);
+  body.stop(startTime + duration + 0.05);
+}
+
 /**
- * 【練習ドリル用】メトロノームの短いクリック音。1分間コードチェンジ・カウンターの
- * テンポガイドとして使う、アコースティックな弦音とは別の短い電子音。
+ * 分数コード(オンコード、例: G/B)のベース音を強調して再生する。
+ * frets配列の中から、指定したベース音を鳴らしている最も低い弦を1本特定し、
+ * それだけをt=0で通常より太く長い「ドーン」という低音で先に鳴らす。残りの弦は
+ * そこから少し間を置いて、通常のストロークと同様に低い弦から高い弦へ時間差で鳴らす。
+ * ベース音を鳴らしている弦が見つからない場合は、通常のストローク再生にフォールバックする。
  */
-function playMetronomeClick(accent) {
+function playChordWithBass(frets, bassNoteName) {
+  if (!Array.isArray(frets)) return;
+  const bassSemitone = ROOT_NOTES.indexOf(bassNoteName);
+  if (bassSemitone < 0) {
+    playChordStrum(frets);
+    return;
+  }
+
+  let bassStringIndex = -1;
+  for (let i = 0; i < frets.length; i++) {
+    const f = frets[i];
+    if (f === "x" || f === -1 || typeof f !== "number" || f < 0) continue;
+    const noteSemitone = (OPEN_STRING_SEMITONES_FOR_AUDIO[i] + f) % 12;
+    if (noteSemitone === bassSemitone) {
+      bassStringIndex = i;
+      break;
+    }
+  }
+
+  if (bassStringIndex < 0) {
+    playChordStrum(frets);
+    return;
+  }
+
   const ctx = ensureAudioContext();
   const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  osc.type = "square";
-  osc.frequency.value = accent ? 1400 : 1000;
+  let step = 0;
 
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.35, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-  osc.start(now);
-  osc.stop(now + 0.06);
+  frets.forEach((fret, stringIndex) => {
+    if (fret === "x" || fret === -1 || typeof fret !== "number" || fret < 0) return;
+    const freq = frequencyForFret(stringIndex, fret);
+    if (stringIndex === bassStringIndex) {
+      pluckBassString(ctx, masterGain, freq, now); // ベース音はドーンと先に
+    } else {
+      pluckString(ctx, masterGain, freq, now + BASS_EMPHASIS_LEAD_SEC + step * STRUM_STEP_SEC);
+      step++;
+    }
+  });
 }
 
 function setVolume(value) {
